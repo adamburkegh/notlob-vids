@@ -1,9 +1,15 @@
-# Dependencies only: the project's code is .lob source, assembled by
-# notlob (an external tool). This file just provides the environment
-# that code runs in. Reinstall with:
+# Version and dependencies only: the project's code is .lob source,
+# assembled by notlob (an external tool), so there is no package here to
+# build or install. This file names the project and provides the
+# environment its code runs in. Reinstall that with:
 #
 #     pip install --group render
 #
+[project]
+name = "notlob-vids"
+version = "0.4.0"
+requires-python = ">=3.12"
+
 [dependency-groups]
 render = [
     "manim>=0.19",
