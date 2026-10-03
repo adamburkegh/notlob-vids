@@ -1,0 +1,11 @@
+# Dependencies only: the project's code is .lob source, assembled by
+# notlob (an external tool). This file just provides the environment
+# that code runs in. Reinstall with:
+#
+#     pip install --group render
+#
+[dependency-groups]
+render = [
+    "manim>=0.19",
+    "notlob @ file:./ref-projects/notlob",
+]

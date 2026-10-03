@@ -1,0 +1,933 @@
+#Teaser
+
+A teaser for notlob, under thirty seconds and square. It follows one
+real module from a real project -- Petri Marking, from the pn-chomper
+game -- from its source on the page, to the claims notlob runs, out to
+the name-graph of the whole project around it.
+
+The scenes here are drawing only. What is shown comes from the other
+modules: colours and frame from #Style, source listings from
+#Highlight, where every name sits from #Graph, and the real results and
+measurements from #Evidence. This module is where the beats of the
+storyboard are built; for now it holds the stills and the first moving
+beat, each a checkpoint before the beats are joined.
+
+##Heritage
+
+The first beat. Literate programming has a source, and the teaser
+starts there: the last clause of the sentence in which Knuth, in 1984,
+asked programmers to change their attitude to what a program is for.
+Then one cut is made to it, on screen. Knuth's reader was a human
+being; notlob's reader may also be an agent, and the sentence needs
+only to lose three words to cover both. The attribution stays in view
+throughout, so the cut reads as ours, made to his words. The clause
+opens mid-sentence in the paper, with a small "let"; it is given a
+capital here, as a quotation standing on its own usually is.
+
+    QUOTE = ("Let us concentrate rather on explaining", "to human beings",
+             "what we want a computer to do.")
+    QUOTE_CUT = 1
+    QUOTE_SOURCE = "Donald E. Knuth, Literate Programming, 1984"
+
+What is left after the cut is still a sentence.
+
+~example
+    " ".join(q for i, q in enumerate(QUOTE) if i != QUOTE_CUT) == "Let us concentrate rather on explaining what we want a computer to do."
+
+The beat's six seconds: the quotation appears and is given time to be
+read -- not just once through, but long enough for the eye to settle
+before anything changes -- then the cut is marked, deliberately, the
+lines close over it, and the result holds.
+
+    def heritage_times(duration: float) -> tuple:
+        return 0.8, 2.8, 0.6, 0.7, duration - 4.9
+
+~example
+    abs(sum(heritage_times(beat("heritage").duration)) - beat("heritage").duration) < 1e-9
+
+The clause is set on three lines with the words to be cut alone on the
+middle one, so that removing them is one clean move: a line through
+them, then the outer lines closing the gap.
+
+    def heritage_beat(scene, out: float = 0.0):
+        lines = [sized_text(words, PROSE_FONT, PROSE, 0.24) for words in QUOTE]
+        block = VGroup(*lines).arrange(DOWN, buff=0.3)
+        source = sized_text("— " + QUOTE_SOURCE, PROSE_FONT, STRUCTURE, 0.15)
+        source.next_to(block, DOWN, buff=0.7)
+        fit_above_caption(VGroup(block, source))
+        cut = lines[QUOTE_CUT]
+        strike = Line(cut.get_left() + 0.12 * LEFT, cut.get_right() + 0.12 * RIGHT,
+                      color=REF, stroke_width=3)
+        close = (lines[QUOTE_CUT - 1].get_center()[1] - cut.get_center()[1]) / 2
+        appear, read, mark, shut, hold = heritage_times(beat("heritage").duration)
+        scene.play(FadeIn(block), FadeIn(source), FadeIn(caption(beat("heritage").caption)),
+                   run_time=appear)
+        scene.wait(read)
+        scene.play(Create(strike), run_time=mark)
+        scene.play(FadeOut(cut), FadeOut(strike),
+                   *[line.animate.shift(close * DOWN) for line in lines[:QUOTE_CUT]],
+                   *[line.animate.shift(close * UP) for line in lines[QUOTE_CUT + 1:]],
+                   run_time=shut)
+        scene.wait(hold - out)
+
+    class HeritageBeat(Scene):
+        def construct(self):
+            heritage_beat(self)
+
+##The Star Module
+
+Its opening -- an essay that cross-references the module it depends on,
+then the code it describes -- is the first thing on screen.
+
+    class ListingPreview(Scene):
+        def construct(self):
+            self.add(listing(STAR_MODULE, *OPENING))
+
+Its claims -- three named properties and two examples, introduced by the
+prose that says what they establish -- are the second still.
+
+    class ClaimsPreview(Scene):
+        def construct(self):
+            self.add(listing(STAR_MODULE, 98, 148))
+
+##One File
+
+The second beat: what literate programming looks like in notlob. The
+star module's opening is one file holding an essay and the code the
+essay describes, each in its own face. Inside the essay is the one
+piece of cyan on the page -- a cross-reference to another module, a
+link that notlob checks -- and it is pointed out, because the last beat
+will follow it.
+
+    CROSS_REFERENCE = "#Petri Net"
+
+The beat also makes the link the rest of the teaser depends on. To an
+agent, a file is something read into its context window, and this one
+arrives with its explanation attached. So the file is framed as a
+context window and given its size in characters -- the unit the context
+beat will measure in. The size is the whole module's, not only the part
+on screen, so the frame is left open at the bottom, with an ellipsis,
+to show the file running on.
+
+    def one_file_times(duration: float) -> tuple:
+        return 0.8, 1.0, 0.8, 0.9, duration - 3.5
+
+~example
+    abs(sum(one_file_times(beat("one-file").duration)) - beat("one-file").duration) < 1e-9
+
+The frame is three sides of a rectangle around the listing, with the
+ellipsis where the fourth would be, and its labels along the top edge:
+what it is on the left, the file and its measured size on the right.
+
+    def context_frame(body, path: Path, project: Path) -> tuple:
+        pad = 0.16
+        left, right = body.get_left()[0] - pad, body.get_right()[0] + pad
+        top, bottom = body.get_top()[1] + pad, body.get_bottom()[1] - pad
+        frame = VMobject(stroke_color=PROSE, stroke_width=2)
+        frame.set_points_as_corners([[left, bottom, 0], [left, top, 0], [right, top, 0],
+                                     [right, bottom, 0]])
+        more = VGroup(*[Dot(radius=0.03, color=PROSE) for _ in range(3)]).arrange(RIGHT, buff=0.1)
+        more.move_to([(left + right) / 2, bottom, 0])
+        name = sized_text("context window", CODE_FONT, PROSE, 0.12)
+        name.move_to([left, top + 0.12, 0], aligned_edge=DL)
+        size = sized_text(f"{path.relative_to(project).as_posix()}  ·  {file_context(path):,} characters",
+                          CODE_FONT, STRUCTURE, 0.12)
+        size.move_to([right, top + 0.12, 0], aligned_edge=DR)
+        return frame, VGroup(more, name, size)
+
+The cross-reference is found in the listing by its text, and the glyphs
+that spell it are the ones that pulse.
+
+    def one_file_beat(scene, out: float = 0.0):
+        body, rows, (_, cap, _) = typeset_listing(STAR_MODULE, *OPENING)
+        before = body.height
+        fit_above_caption(body).scale(0.9).shift(0.12 * DOWN)
+        cap *= body.height / before
+        source = STAR_MODULE.read_text(encoding="utf-8").split("\n")
+        line = next(n for n in sorted(rows) if CROSS_REFERENCE in source[n - 1])
+        reference = name_glyphs(rows[line], source[line - 1], CROSS_REFERENCE, cap)
+        frame, labels = context_frame(body, STAR_MODULE, STAR_PROJECT)
+        appear, read, point, enclose, hold = one_file_times(beat("one-file").duration)
+        scene.play(FadeIn(body), FadeIn(caption(beat("one-file").caption)), run_time=appear)
+        scene.wait(read)
+        scene.play(Indicate(reference, color=REF, scale_factor=1.6), run_time=point)
+        scene.play(Create(frame), FadeIn(labels), run_time=enclose)
+        scene.wait(hold - out)
+
+    class OneFileBeat(Scene):
+        def construct(self):
+            one_file_beat(self)
+
+##Claims Run
+
+The third beat. The star module's claims are on screen, and then the
+results of actually running them arrive: a tick beside each line notlob
+reports, in source order -- one per assertion for examples, one per
+property at its sigil, exactly where notlob puts them. The ticks are not
+drawn because the claims ought to pass; they are drawn because, run
+moments before the render, they did.
+
+    CLAIMS_EXCERPT = (105, 148)
+
+A tick is two strokes, sized to the capitals of the code beside it.
+
+    def tick(cap: float):
+        mark = VMobject(color=CLAIM, stroke_width=2.5)
+        mark.set_points_as_corners([[0, 0.4, 0], [0.32, 0.0, 0], [1, 1.0, 0]])
+        return mark.scale_to_fit_height(cap * 1.1)
+
+Ticks stand in the margin left of the claim bars, centred on the line
+they belong to, in source order.
+
+    def margin_ticks(rows: dict, grid: tuple, first: int, results: dict) -> list:
+        advance, cap, row_pitch = grid
+        x = -(CLAIM_BAR_GAP + 3.0) * advance
+        ticks = []
+        for line in sorted(results):
+            if line in rows:
+                mark = tick(cap)
+                mark.move_to([x, -(line - 1 - first) * row_pitch + cap / 2, 0])
+                ticks.append(mark)
+        return ticks
+
+A ticked listing fits the listing and its results to the frame
+together.
+
+    def ticked_listing(path: Path, first: int, last: int, results: dict) -> tuple:
+        body, rows, grid = typeset_listing(path, first, last)
+        ticks = margin_ticks(rows, grid, first, results)
+        fit_above_caption(VGroup(body, *ticks))
+        return body, ticks
+
+Every claim in the excerpt gets at least one tick: each run of claim
+lines has a result on one of its lines, or on the sigil just above it.
+
+    def every_claim_ticked(source: str, results: dict, first: int, last: int) -> bool:
+        claims = [n for n in claim_lines(source) if first <= n < last]
+        return all(any(top <= line <= bottom + 1 for line in results)
+                   for top, bottom in runs(claims))
+
+The beat's time is the storyboard's: a moment for the listing to
+appear, most of it for the ticks to land, the rest to hold.
+
+    def claims_run_times(duration: float) -> tuple:
+        return 0.5, duration * 0.6, duration * 0.4 - 0.5
+
+~example
+    abs(sum(claims_run_times(beat("claims-run").duration)) - beat("claims-run").duration) < 1e-9
+
+The beat is played onto whichever scene it is given, so it can be
+rendered alone for review and later joined with the others.
+
+    def claims_run(scene, out: float = 0.0):
+        results = claim_results(STAR_PROJECT, "petri/marking.lob")
+        body, ticks = ticked_listing(STAR_MODULE, *CLAIMS_EXCERPT, results)
+        appear, land, hold = claims_run_times(beat("claims-run").duration)
+        words = caption(beat("claims-run").caption)
+        scene.play(FadeIn(body), FadeIn(words), run_time=appear)
+        scene.play(LaggedStart(*[Create(t) for t in ticks], lag_ratio=0.6), run_time=land)
+        scene.wait(hold - out)
+
+    class ClaimsRunBeat(Scene):
+        def construct(self):
+            claims_run(self)
+
+##The Split
+
+The fourth beat. One claim is seen to mean something. The star module's
+second example states a split: a token in p1 fires through t1, and
+afterwards p2 and p3 hold one each. In the game that is a chomper
+walking through a doorway and becoming two. Above, the example; below,
+the net it is about, drawn the way pn-chomper draws it; and the net,
+both markings and the ticks all come from running pn-chomper's code.
+
+    SPLIT_EXAMPLE = (142, 148)
+
+The marking before firing places the chompers; the transition fired is
+the one leading out of the room the chompers leave.
+
+    def fired_transition(net: dict, before: dict, after: dict) -> str:
+        emptied = {p for p, n in before.items() if n > after.get(p, 0)}
+        return next(a["target"] for a in net["arcs"] if a["source"] in emptied)
+
+~example
+    fired_transition(SPLIT_NET, {"p1": 1}, {"p1": 0, "p2": 1, "p3": 1}) == "t1"
+
+The beat's four seconds: the picture appears, the chomper walks to the
+door, splits into the rooms beyond it, the ticks land, and it holds.
+
+    def split_times(duration: float) -> tuple:
+        appear, walk, split = 0.5, 0.8, 0.8
+        ticks = 1.0
+        return appear, walk, split, ticks, duration - appear - walk - split - ticks
+
+~example
+    abs(sum(split_times(beat("split").duration)) - beat("split").duration) < 1e-9
+    min(split_times(beat("split").duration)) > 0
+
+The listing sits above the board, and the two are fitted to the frame
+as one picture. Chompers are placed after fitting, sized to the rooms
+they stand in. The board is drawn twice, for the marking before and the
+marking after: before, the door can fire, so it is lit and its corridors
+are gold; after, nothing can, and as the chompers arrive the board
+turns into that quieter one.
+
+    def split_beat(scene, out: float = 0.0):
+        states = split_states(STAR_PROJECT, "petri/marking.lob")
+        results = claim_results(STAR_PROJECT, "petri/marking.lob")
+        first, last = SPLIT_EXAMPLE
+        body, rows, grid = typeset_listing(STAR_MODULE, first, last)
+        ticks = margin_ticks(rows, grid, first, results)
+        listing_part = VGroup(body, *ticks)
+        board, rooms, doors = draw_board(states, states["before"], show_labels=True)
+        listing_part.scale_to_fit_width(board.width * 0.9)
+        fit_above_caption(VGroup(listing_part, board).arrange(DOWN, buff=0.5))
+        fired = draw_board(states, states["after"], show_labels=True)[0]
+        fired.scale_to_fit_width(board.width).move_to(board)
+        room_radius = rooms["p1"][0].width / 2
+        size = room_radius * CHOMPER_RADIUS / PLACE_RADIUS
+        walkers = [draw_chomper(size).move_to(rooms[p][0])
+                   for p, n in sorted(states["before"].items()) for _ in range(n)]
+        door = doors[fired_transition(states, states["before"], states["after"])][0]
+        targets = [rooms[p][0].get_center()
+                   for p, n in sorted(states["after"].items()) for _ in range(n)]
+        appear, walk, split, land, hold = split_times(beat("split").duration)
+        words = caption(beat("split").caption)
+        scene.play(FadeIn(body), FadeIn(board), FadeIn(words), *[FadeIn(w) for w in walkers],
+                   run_time=appear)
+        scene.play(*[w.animate.move_to(door) for w in walkers], run_time=walk)
+        arrivals = [walkers[0].copy() for _ in targets]
+        scene.remove(*walkers)
+        scene.play(*[a.animate.move_to(t) for a, t in zip(arrivals, targets)],
+                   Transform(board, fired), run_time=split)
+        scene.play(LaggedStart(*[Create(t) for t in ticks], lag_ratio=0.5), run_time=land)
+        scene.wait(hold - out)
+
+    class SplitBeat(Scene):
+        def construct(self):
+            split_beat(self)
+
+##Context
+
+The fifth beat: why this matters to an agent, whose context window is
+what it can afford to read. One question about pn-chomper, answered two
+ways, each measured in characters actually taken in -- searching the
+sources and reading the files that match, or asking notlob for the one
+section that answers it. The bars share one scale, so their lengths are
+the measurements; the counters climb to the measured values, and the
+line beneath each bar says what was measured.
+
+    def context_bars(search: int, query: int, full: float) -> tuple:
+        return full, full * query / search
+
+~example
+    context_bars(40000, 2000, 6.0) == (6.0, 0.3)
+
+The beat's time: the question appears, the search bar grows slowly and
+long, the query bar quickly and short, and the difference holds.
+
+    def context_times(duration: float) -> tuple:
+        return 0.5, 1.6, 0.6, duration - 2.7
+
+Its hold is short on purpose: the next beat picks the query up again,
+on the graph it was asked of.
+
+~example
+    abs(sum(context_times(beat("context").duration)) - beat("context").duration) < 1e-9
+
+A row is a label and a climbing counter above a bar, with what was
+measured beneath it in code type.
+
+    LABEL_CAP = 0.2
+    DETAIL_CAP = 0.13
+    BAR_HEIGHT = 0.42
+
+    def context_row(label: str, detail: str, colour: str, length: float, top: float,
+                    left: float, right: float) -> tuple:
+        title = sized_text(label, PROSE_FONT, PROSE, LABEL_CAP)
+        title.move_to([left, top, 0], aligned_edge=UL)
+        bar = Rectangle(width=max(length, 0.02), height=BAR_HEIGHT, fill_color=colour,
+                        fill_opacity=1, stroke_width=0)
+        bar.next_to(title, DOWN, buff=0.18, aligned_edge=LEFT)
+        note = sized_text(detail, CODE_FONT, STRUCTURE, DETAIL_CAP)
+        note.next_to(bar, DOWN, buff=0.16, aligned_edge=LEFT)
+        count = ValueTracker(0)
+        counter = always_redraw(lambda: sized_text(
+            f"{int(count.get_value()):,} characters", CODE_FONT, colour, LABEL_CAP * 0.8
+        ).move_to([right, title.get_center()[1], 0], aligned_edge=RIGHT))
+        return VGroup(title, note), bar, counter, count
+
+The two rows sit between the question at the top and the caption band
+at the bottom, the second clearly apart from the first.
+
+    def context_beat(scene, out: float = 0.0):
+        search = search_context(STAR_PROJECT, SEARCH_WORD)
+        query = query_context(STAR_PROJECT, ANSWER_ADDRESS)
+        files = search_files(STAR_PROJECT, SEARCH_WORD)
+        full = FRAME_UNITS - 2 * MARGIN - 0.4
+        left, right = -full / 2, full / 2
+        long, short = context_bars(search, query, full)
+        question = sized_text(QUESTION, PROSE_FONT, PROSE, 0.26).move_to([0, 2.7, 0])
+        first = context_row("Search and read", f'grep "{SEARCH_WORD}", then read {len(files)} files',
+                            STRUCTURE, long, 1.6, left, right)
+        second = context_row("Ask notlob", f'notlob query content "{ANSWER_ADDRESS}"',
+                             REF, short, -0.3, left, right)
+        appear, grow_search, grow_query, hold = context_times(beat("context").duration)
+        words = caption(beat("context").caption)
+        scene.play(FadeIn(question), FadeIn(first[0]), FadeIn(second[0]), FadeIn(words),
+                   run_time=appear)
+        scene.add(first[2], second[2])
+        scene.play(GrowFromEdge(first[1], LEFT), first[3].animate.set_value(search),
+                   run_time=grow_search)
+        scene.play(GrowFromEdge(second[1], LEFT), second[3].animate.set_value(query),
+                   run_time=grow_query)
+        scene.wait(hold - out)
+
+    class ContextBeat(Scene):
+        def construct(self):
+            context_beat(self)
+
+##The Whole Project
+
+The name-graph of all of pn-chomper, laid out by #Graph: each module a
+flower of its own names, foundations in the middle, the binding around
+the rim. Nodes are coloured by kind and edges weighted by kind, so the
+same palette that coloured the source now colours its structure.
+
+    STAR_GRAPH, STAR_LAYOUT = project_layout(STAR_PROJECT)
+    NODE_RADIUS = 0.22
+
+    def node_dots(graph: dict, laid) -> dict:
+        kinds = {n["address"]: n["kind"] for n in graph["nodes"]}
+        return {
+            address: Dot([x, y, 0], radius=NODE_RADIUS,
+                         color=NODE_COLOURS.get(kinds[address], STRUCTURE))
+            for address, (x, y) in laid.positions.items()
+        }
+
+    def edge_lines(graph: dict, laid) -> list:
+        return [
+            Line([*laid.positions[e["source"]], 0], [*laid.positions[e["target"]], 0],
+                 color=EDGE_COLOURS[e["kind"]], stroke_width=EDGE_WIDTH[e["kind"]],
+                 stroke_opacity=EDGE_OPACITY[e["kind"]])
+            for e in graph["edges"]
+        ]
+
+##The Graph
+
+The last beat. The star module's names leave the page: a dot appears at
+each line of the listing that defines a name and flies to its place in
+the module's flower. Its prose cross-reference to Petri Net is drawn as
+an edge heading out of view, and then the view pulls back to show where
+it goes -- and everything else the module is part of.
+
+    STAR_CLUSTER = "petri/marking"
+    OPENING = (0, 41)
+
+The edge the story follows is the one the listing shows as a
+cross-reference in the module's opening essay.
+
+    def hero_edge(graph: dict) -> int:
+        return next(i for i, e in enumerate(graph["edges"])
+                    if (e["kind"], e["source"], e["target"])
+                    == ("REFERENCES", STAR_CLUSTER, "petri/net"))
+
+The names that lift off are those of the star module defined on a line
+the listing is showing.
+
+    def liftable(graph: dict, laid, rows: dict) -> list:
+        return [n["address"] for n in graph["nodes"]
+                if laid.cluster_of[n["address"]] == STAR_CLUSTER and n.get("start_line") in rows]
+
+Each name that lifts off takes its own text with it: a copy of the
+very glyphs that spell it in the listing, so the name is seen to leave
+the line it was written on. If a name cannot be found in its line, it
+is set afresh in code type instead.
+
+    def name_glyphs(row, text: str, label: str, cap: float):
+        start = text.find(label)
+        glyphs, index = visible_glyphs(row), glyph_indices(text)
+        if start < 0 or len(glyphs) != len(index):
+            return sized_text(label, CODE_FONT, CODE, cap).move_to(row.get_left(), aligned_edge=LEFT)
+        return VGroup(*[glyphs[index[p]].copy()
+                        for p in range(start, start + len(label)) if p in index])
+
+A name in the graph is more than its text: it has an address, the
+module's address and then the name. That is the form the query in the
+beat before used, and it is what makes the graph something that can be
+asked questions. So as each name flies it becomes its address -- the
+name's own glyphs take their place at the end, and the module's part
+appears in front of them. Addresses are set level, reading away from
+the flower, beside the dots they belong to. A node whose address does not end in its
+label, the module itself, simply turns into its address.
+
+    def address_text(address: str, label: str, colour: str, cap: float, point, direction):
+        full = sized_text(address, CODE_FONT, STRUCTURE, cap).next_to(point, direction, buff=0.2)
+        glyphs = visible_glyphs(full)
+        count = len(label.replace(" ", "")) if address.endswith(label) else 0
+        prefix, tail = VGroup(*glyphs[:len(glyphs) - count]), VGroup(*glyphs[len(glyphs) - count:])
+        if count:
+            tail.set_color(colour)
+        else:
+            prefix.set_color(colour)
+        return prefix, tail
+
+The question from the beat before had an answer at one address. That
+address is a node here, a subheading of the star module, and what the
+query returned is that node and what it holds.
+
+    def query_nodes(graph: dict) -> list:
+        parents = tree_parents(graph)
+        return [ANSWER_ADDRESS] + sorted(a for a, p in parents.items() if p == ANSWER_ADDRESS)
+
+What the query touched is not a passing flash. Those nodes turn the
+colour of the query and grow, the edges among them with them, and they
+stay that way as the view pulls back -- so the answer is still there to
+be seen, a small lit part of the whole graph.
+
+    ASKED_SCALE = 1.5
+
+    def mark_asked(dot) -> None:
+        dot.set_color(REF).scale(ASKED_SCALE)
+
+    def mark_among(line) -> None:
+        line.set_stroke(color=REF, opacity=0.9, width=2.5)
+
+The beat's time: the listing, the lift-off, the query, the reference,
+the pull back, and the end card. The lift-off has three parts of its
+own: names and dots appear on their lines, fly to the flower becoming
+addresses as the listing fades, and the rest of the flower arrives.
+
+    def graph_times(duration: float) -> tuple:
+        return 0.6, 1.5, 1.3, 0.5, 1.4, duration - 5.3
+
+    LIFT_PARTS = (0.2, 0.5, 0.3)
+
+~example
+    abs(sum(graph_times(beat("graph").duration)) - beat("graph").duration) < 1e-9
+    graph_times(beat("graph").duration)[-1] > 0
+
+The view does not use a moving camera, which would carry the caption
+band away with it. The graph itself is moved instead: it starts scaled
+up so the star module's flower fills the picture, and is then shrunk and
+re-centred to the whole project. What lies outside the flower starts
+invisible and appears as the view widens. The close-up sits left of
+centre: the names that lift off are the first on the flower's ring, up
+and to the right, and their addresses need the room beside them.
+
+    CLOSE_UP_RADIUS = 2.0
+    CLOSE_UP_CENTRE = (-1.2, CAPTION_BAND / 2)
+
+    def close_up(whole, laid) -> None:
+        x, y, radius = laid.clusters[STAR_CLUSTER]
+        scale = CLOSE_UP_RADIUS / radius
+        whole.scale(scale, about_point=[0, 0, 0])
+        whole.shift([CLOSE_UP_CENTRE[0] - x * scale, CLOSE_UP_CENTRE[1] - y * scale, 0])
+
+When the view has pulled back, the graph is named for what it is: the
+output of a command, with its real size.
+
+    def graph_summary(graph: dict) -> str:
+        return f"notlob graph  ->  {len(graph['nodes'])} nodes, {len(graph['edges'])} edges"
+
+~example
+    graph_summary({"nodes": [1, 2], "edges": [3]}) == "notlob graph  ->  2 nodes, 1 edges"
+
+The beat itself follows: the pieces are prepared in their final places,
+then moved back to where each one starts.
+
+    def graph_beat(scene, out: float = 0.0):
+        graph, laid = STAR_GRAPH, STAR_LAYOUT
+        dots = node_dots(graph, laid)
+        edges = edge_lines(graph, laid)
+        hero = hero_edge(graph)
+        edges[hero].set_stroke(color=REF, width=3.5, opacity=1)
+        whole = VGroup(*edges, *dots.values())
+        whole.target = fit_above_caption(whole.copy()).scale(0.9).shift(0.15 * DOWN)
+        asked = [a for a in query_nodes(graph) if a in dots]
+        among = [i for i, e in enumerate(graph["edges"])
+                 if e["source"] in asked and e["target"] in asked]
+        order = list(dots)
+        for a in asked:
+            mark_asked(whole.target[len(edges) + order.index(a)])
+        for i in among:
+            mark_among(whole.target[i])
+        close_up(whole, laid)
+        star = {a for a in dots if laid.cluster_of[a] == STAR_CLUSTER}
+        inner = [edges[i] for i, e in enumerate(graph["edges"])
+                 if e["source"] in star and e["target"] in star]
+        for i, e in enumerate(graph["edges"]):
+            if not (e["source"] in star and e["target"] in star):
+                edges[i].set_stroke(opacity=0)
+        for address, dot in dots.items():
+            if address not in star:
+                dot.set_opacity(0)
+
+        body, rows, (_, cap, _) = typeset_listing(STAR_MODULE, *OPENING)
+        before = body.height
+        fit_above_caption(body)
+        cap *= body.height / before
+        source = STAR_MODULE.read_text(encoding="utf-8").split("\n")
+        nodes = {n["address"]: n for n in graph["nodes"]}
+        lifted = liftable(graph, laid, rows)
+        homes = {a: dots[a].get_center() for a in lifted}
+        centre = homes.get(STAR_CLUSTER, dots[STAR_CLUSTER].get_center())
+        names = {}
+        for a in lifted:
+            line = nodes[a]["start_line"]
+            names[a] = name_glyphs(rows[line], source[line - 1], nodes[a]["label"], cap)
+            dots[a].move_to(names[a].get_left() + 0.2 * LEFT)
+        settled = [dots[a] for a in sorted(star) if a not in lifted]
+
+        flights, labels = [], []
+        for a in lifted:
+            away = homes[a] - centre
+            outward = UP if np.linalg.norm(away) < 1e-6 else (RIGHT if away[0] >= 0 else LEFT)
+            colour = NODE_COLOURS.get(nodes[a]["kind"], STRUCTURE)
+            prefix, tail = address_text(a, nodes[a]["label"], colour, cap * 1.25, homes[a], outward)
+            flights.append(dots[a].animate.move_to(homes[a]))
+            if len(tail):
+                flights += [Transform(names[a], tail), FadeIn(prefix)]
+                labels += [names[a], prefix]
+            else:
+                flights.append(Transform(names[a], prefix))
+                labels.append(names[a])
+
+        command = VGroup(
+            sized_text("notlob query content", CODE_FONT, STRUCTURE, 0.13),
+            sized_text(f'"{ANSWER_ADDRESS}"', CODE_FONT, REF, 0.13),
+        ).arrange(RIGHT, buff=0.12, aligned_edge=DOWN)
+        command.move_to([-FRAME_UNITS / 2 + MARGIN, FRAME_UNITS / 2 - MARGIN, 0], aligned_edge=UL)
+        summary = sized_text(graph_summary(graph), CODE_FONT, STRUCTURE, 0.13)
+        summary.move_to([-FRAME_UNITS / 2 + MARGIN, FRAME_UNITS / 2 - MARGIN, 0], aligned_edge=UL)
+        words = caption(beat("graph").caption)
+
+        show, lift, query, refer, pull, end = graph_times(beat("graph").duration)
+        appear, fly, settle = (lift * part for part in LIFT_PARTS)
+        scene.play(FadeIn(body), FadeIn(words), run_time=show)
+        scene.play(*[FadeIn(dots[a]) for a in lifted], *[FadeIn(names[a]) for a in lifted],
+                   run_time=appear)
+        scene.play(*flights, FadeOut(body), run_time=fly)
+        scene.play(*[FadeIn(m) for m in inner + settled], run_time=settle)
+        scene.play(FadeIn(command), run_time=query * 0.25)
+        scene.play(*[dots[a].animate.set_color(REF).scale(ASKED_SCALE) for a in asked],
+                   *[edges[i].animate.set_stroke(color=REF, opacity=0.9, width=2.5) for i in among],
+                   run_time=query * 0.35)
+        scene.wait(query * 0.4)
+        scene.add(whole)
+        edges[hero].set_stroke(opacity=1)
+        scene.play(Create(edges[hero]), *[FadeOut(m) for m in labels], FadeOut(command),
+                   run_time=refer)
+        scene.play(MoveToTarget(whole), run_time=pull * 0.75)
+        scene.play(FadeIn(summary), run_time=pull * 0.25)
+        scene.play(FadeOut(words), FadeIn(caption(END_CARD)), run_time=end / 2)
+        scene.wait(end / 2 - out)
+
+    class GraphBeat(Scene):
+        def construct(self):
+            graph_beat(self)
+
+The whole project, still, for checking the layout at a glance.
+
+    class GraphPreview(Scene):
+        def construct(self):
+            edges = edge_lines(STAR_GRAPH, STAR_LAYOUT)
+            self.add(fit_to_frame(VGroup(*edges, *node_dots(STAR_GRAPH, STAR_LAYOUT).values())))
+
+##Sounds
+
+What is heard, and when. The voices and the mixing come from #Sound;
+this section says which sound goes with which moment. Each beat's
+sounds are written from the same timing function its pictures use, so
+a sound cannot drift from the thing it accompanies -- move a beat's
+timing and its sounds move with it.
+
+Ticks, and anything else that arrives one after another, are drawn with
+a staggered start. The moment each one begins follows from how many
+there are, how far they overlap and how long the whole takes.
+
+    def lagged_starts(count: int, lag_ratio: float, run_time: float) -> list:
+        if count == 0:
+            return []
+        each = run_time / (1 + (count - 1) * lag_ratio)
+        return [i * lag_ratio * each for i in range(count)]
+
+~example
+    lagged_starts(3, 0.5, 2.0) == [0.0, 0.5, 1.0]
+    lagged_starts(0, 0.5, 2.0) == []
+
+Three numbers come from the real material and decide how many sounds
+there are: the ticks in the claims excerpt, the ticks in the split's
+example, and the names that lift off the opening listing.
+
+    def result_count(results: dict, first: int, last: int) -> int:
+        return len([line for line in results if first < line <= last])
+
+    def sound_counts() -> dict:
+        results = claim_results(STAR_PROJECT, "petri/marking.lob")
+        rows = typeset_listing(STAR_MODULE, *OPENING)[1]
+        return {
+            "claims": result_count(results, *CLAIMS_EXCERPT),
+            "split": result_count(results, *SPLIT_EXAMPLE),
+            "lifted": len(liftable(STAR_GRAPH, STAR_LAYOUT, rows)),
+        }
+
+Heritage: a low note as the quotation appears, a knock where the cut is
+struck, two rising notes as the lines close over it.
+
+    def heritage_sounds(duration: float, counts: dict) -> list:
+        appear, read, mark, shut, _ = heritage_times(duration)
+        cut = appear + read
+        return [(0.0, "marimba", 0, 0.5), (cut, "knock", 0, 0.5),
+                (cut + mark, "marimba", 3, 0.4), (cut + mark + shut / 2, "marimba", 5, 0.45)]
+
+One file: a note as the listing appears, a brighter one for the
+cross-reference, and three rising notes for the three sides of the
+context window's frame.
+
+    def one_file_sounds(duration: float, counts: dict) -> list:
+        appear, read, point, enclose, _ = one_file_times(duration)
+        frame = appear + read + point
+        return [(0.0, "marimba", 7, 0.4), (appear + read, "marimba", 12, 0.45),
+                *[(frame + k * enclose / 3, "marimba", step, 0.35)
+                  for k, step in enumerate((5, 7, 8))]]
+
+Claims run: a woodblock for every tick, climbing the scale.
+
+    def claims_run_sounds(duration: float, counts: dict) -> list:
+        appear, land, _ = claims_run_times(duration)
+        return [(0.0, "marimba", 5, 0.35),
+                *[(appear + start, "woodblock", 10 + i % 10, 0.4)
+                  for i, start in enumerate(lagged_starts(counts["claims"], 0.6, land))]]
+
+The split: one note as the chomper sets off, one at the door, then two
+together as it arrives as two -- and the ticks.
+
+    def split_sounds(duration: float, counts: dict) -> list:
+        appear, walk, split, land, _ = split_times(duration)
+        arrive = appear + walk + split
+        return [(appear, "marimba", 5, 0.4), (appear + walk, "marimba", 8, 0.45),
+                (arrive - split * 0.1, "marimba", 10, 0.4), (arrive - split * 0.1, "marimba", 12, 0.4),
+                *[(arrive + start, "woodblock", 12 + i, 0.4)
+                  for i, start in enumerate(lagged_starts(counts["split"], 0.5, land))]]
+
+Context: the comparison is made audible. The search bar grows to a long
+roll of rising notes; the query bar gets two.
+
+    ROLL_STEP = 0.1
+
+    def context_sounds(duration: float, counts: dict) -> list:
+        appear, grow_search, _, _ = context_times(duration)
+        roll = [(appear + i * ROLL_STEP, "marimba", 3 + i, 0.18 + 0.01 * i)
+                for i in range(int(grow_search / ROLL_STEP))]
+        asked = appear + grow_search
+        return [(0.0, "marimba", 5, 0.35), *roll,
+                (asked, "marimba", 10, 0.45), (asked + 0.15, "marimba", 12, 0.45)]
+
+The graph: a pluck for each name that lifts, a chord when the query
+lights its nodes, a note for the cross-reference, a falling run as the
+view pulls back, and a low octave on the end card.
+
+    def graph_sounds(duration: float, counts: dict) -> list:
+        show, lift, query, refer, pull, _ = graph_times(duration)
+        lifted = max(counts["lifted"], 1)
+        lit = show + lift + query * 0.25
+        edge = show + lift + query
+        back = edge + refer
+        return [(0.0, "marimba", 5, 0.35),
+                *[(show + lift * 0.2 + i * lift * 0.5 / lifted, "marimba", 7 + i, 0.35)
+                  for i in range(counts["lifted"])],
+                *[(lit, "marimba", step, 0.3) for step in (5, 7, 8, 10)],
+                (edge, "marimba", 12, 0.45),
+                *[(back + i * pull * 0.75 / 5, "marimba", 14 - 2 * i, 0.3) for i in range(5)],
+                (back + pull, "marimba", 0, 0.5), (back + pull, "marimba", 5, 0.5)]
+
+Every beat has its sounds, and they are placed on the storyboard's
+timeline.
+
+    BEAT_SOUNDS = {
+        "heritage": heritage_sounds,
+        "one-file": one_file_sounds,
+        "claims-run": claims_run_sounds,
+        "split": split_sounds,
+        "context": context_sounds,
+        "graph": graph_sounds,
+    }
+
+    def teaser_sounds(counts: dict) -> list:
+        return sorted((start + time, voice, step, gain)
+                      for start, played in timeline(BEATS)
+                      for time, voice, step, gain in BEAT_SOUNDS[played.name](played.duration, counts))
+
+~example
+    [b.name for b in BEATS] == list(BEAT_SOUNDS)
+
+The track is mixed to the storyboard's length and written beside the
+other rendered output.
+
+For now the teaser is rendered silent. The first track, pitched notes on
+a pentatonic scale, sounded like a children's programme against pictures
+that are not one. The events and their timing are kept, since a quieter,
+less melodic set of voices could reuse them; only the switch is off.
+
+    SOUND_ON = False
+    SOUND_FILE = Path("../media/sound/teaser.wav")
+
+    def teaser_track() -> Path:
+        length = sum(played.duration for played in BEATS)
+        return write_wav(mix(teaser_sounds(sound_counts()), length), SOUND_FILE)
+
+##The Whole Teaser
+
+The beats, joined in the storyboard's order. Every beat of the
+storyboard has a function here that plays it.
+
+    BEAT_SCENES = {
+        "heritage": heritage_beat,
+        "one-file": one_file_beat,
+        "claims-run": claims_run,
+        "split": split_beat,
+        "context": context_beat,
+        "graph": graph_beat,
+    }
+
+~example
+    [b.name for b in BEATS] == list(BEAT_SCENES)
+
+Between beats the stage fades to the background. The fade is not extra
+time: a beat that is followed by another gives up that much of its
+final hold, so the whole teaser lasts exactly what the storyboard says
+and stays within its limit. Every such beat has hold enough to give.
+
+    FADE = 0.4
+
+~example
+    heritage_times(beat("heritage").duration)[-1] > FADE
+    one_file_times(beat("one-file").duration)[-1] > FADE
+    claims_run_times(beat("claims-run").duration)[-1] > FADE
+    split_times(beat("split").duration)[-1] > FADE
+    context_times(beat("context").duration)[-1] > FADE
+
+Clearing the stage stops anything still updating itself -- the context
+beat's counters -- before fading everything out.
+
+    def clear_stage(scene, fade: float) -> None:
+        for mobject in scene.mobjects:
+            mobject.clear_updaters()
+        scene.play(*[FadeOut(mobject) for mobject in scene.mobjects], run_time=fade)
+        scene.clear()
+
+    class WholeTeaser(Scene):
+        def construct(self):
+            if SOUND_ON:
+                self.add_sound(str(teaser_track().resolve()))
+            names = [b.name for b in BEATS]
+            for name in names[:-1]:
+                BEAT_SCENES[name](self, FADE)
+                clear_stage(self, FADE)
+            BEAT_SCENES[names[-1]](self)
+
+##Rendering
+
+Frame, colours and output location all come from #Style. The whole
+teaser is rendered, and each beat alone for review.
+
+~run
+    render_square(WholeTeaser)
+    render_square(HeritageBeat)
+    render_square(OneFileBeat)
+    render_square(ContextBeat)
+    render_square(SplitBeat)
+    render_square(ClaimsRunBeat)
+    render_square(GraphBeat)
+    render_still(GraphPreview)
+    render_still(ListingPreview)
+    render_still(ClaimsPreview)
+
+---
+
+#Tests
+
+##the whole project is drawn
+
+Every node becomes a dot and every edge a line -- nothing in the graph
+is dropped on the way to the screen.
+
+    len(node_dots(STAR_GRAPH, STAR_LAYOUT)) == len(STAR_GRAPH["nodes"])
+    len(edge_lines(STAR_GRAPH, STAR_LAYOUT)) == len(STAR_GRAPH["edges"])
+
+##the finale has its edge and its names
+
+The cross-reference the listing shows is a real edge of the graph, and
+the opening listing defines enough of the module's names to lift off.
+
+    STAR_GRAPH["edges"][hero_edge(STAR_GRAPH)]["kind"] == "REFERENCES"
+    len(liftable(STAR_GRAPH, STAR_LAYOUT, typeset_listing(STAR_MODULE, *OPENING)[1])) >= 5
+
+##every sound is heard in full
+
+With the real numbers of ticks and names, every sound starts after the
+teaser begins and has finished before it ends.
+
+    fits(teaser_sounds(sound_counts()), LIMIT)
+    sound_counts()["claims"] > 0 and sound_counts()["split"] > 0 and sound_counts()["lifted"] > 0
+
+##the query's answer is in the star module's flower
+
+The address the context beat queried is a node of the star module, with
+names of its own beneath it -- the part of the graph the query returned.
+
+    STAR_LAYOUT.cluster_of[ANSWER_ADDRESS] == STAR_CLUSTER
+    len(query_nodes(STAR_GRAPH)) >= 3
+
+##every claim on screen is ticked
+
+The results of the real run cover every claim in the excerpt shown.
+
+    every_claim_ticked(STAR_MODULE.read_text(encoding="utf-8"), claim_results(STAR_PROJECT, "petri/marking.lob"), *CLAIMS_EXCERPT)
+    every_claim_ticked(STAR_MODULE.read_text(encoding="utf-8"), claim_results(STAR_PROJECT, "petri/marking.lob"), *SPLIT_EXAMPLE)
+
+##the split board is the real net
+
+The board in the split beat is drawn from the net pn-chomper's own code
+built, and the chompers end where its firing rule put them.
+
+    split_states(STAR_PROJECT, "petri/marking.lob")["places"] == SPLIT_NET["places"]
+    fired_transition(split_states(STAR_PROJECT, "petri/marking.lob"), {"p1": 1}, split_states(STAR_PROJECT, "petri/marking.lob")["after"]) == "t1"
+
+#References
+    #Style
+    #Highlight
+    #Graph
+    #Evidence
+    #Storyboard
+    #Board
+    #Sound
+    from pathlib import Path
+
+    import numpy as np
+    from manim import (
+        DL,
+        DOWN,
+        DR,
+        LEFT,
+        RIGHT,
+        UL,
+        UP,
+        Create,
+        Dot,
+        FadeIn,
+        FadeOut,
+        GrowFromEdge,
+        Indicate,
+        LaggedStart,
+        Line,
+        MoveToTarget,
+        Rectangle,
+        Scene,
+        Transform,
+        ValueTracker,
+        VGroup,
+        VMobject,
+        always_redraw,
+    )

@@ -1,0 +1,383 @@
+#Highlight
+
+Colouring notlob source for the screen. There is no hand-written
+highlighter here: the source is parsed by notlob's own grammar, and the
+colours follow the parse tree. What the viewer sees coloured as a claim
+is exactly what notlob will run as a claim -- the picture cannot drift
+from the language.
+
+The parser keeps every token's position in the source. A highlight is a
+list of spans, each one line, a column range, and a kind.
+
+    @dataclass(frozen=True)
+    class Span:
+        line: int
+        start: int
+        end: int
+        kind: str
+
+##Classification
+
+Most tokens know their kind from their type alone: a module heading is
+a title, a cross-reference is a ref. Indented lines are the exception --
+the same INDENTED_LINE terminal is code in a code block, a claim body
+under a sigil or in the tests section, and a declaration in the
+references section -- so for those the enclosing grammar rule decides.
+
+    TOKEN_KINDS = {
+        "MOD_HEAD": "title",
+        "SUBHEAD": "subheading",
+        "LINE_START_TEXT": "prose",
+        "PROSE_TEXT": "prose",
+        "REF": "ref",
+        "BULLET": "bullet",
+        "SIGIL": "sigil",
+        "TEST_SIGIL": "sigil",
+    }
+
+    INDENTED_KINDS = {
+        "code_block": "code",
+        "claim": "claim",
+        "named_test": "claim",
+        "test_group": "claim",
+        "test_item": "claim",
+    }
+
+    def classify(rule: str, token_type: str) -> str:
+        if token_type == "INDENTED_LINE":
+            return INDENTED_KINDS.get(rule, "structure")
+        return TOKEN_KINDS.get(token_type, "structure")
+
+##Spans
+
+Walking the tree pairs each token with the rule that contains it. The
+line-oriented terminals consume their own trailing newline; spans stop
+short of it, and a blank line contributes no span at all.
+
+    def _terminated(source: str) -> str:
+        return source if source.endswith("\n") else source + "\n"
+
+    def _tokens(tree: Tree):
+        for child in tree.children:
+            if isinstance(child, Tree):
+                yield from _tokens(child)
+            else:
+                yield str(tree.data), child
+
+    def spans(source: str) -> list:
+        source = _terminated(source)
+        line_starts = [0] + [i + 1 for i, ch in enumerate(source) if ch == "\n"]
+        result = []
+        for rule, token in _tokens(parse(source)):
+            text = source[token.start_pos:token.end_pos].rstrip("\n")
+            if not text:
+                continue
+            line = token.line - 1
+            start = token.start_pos - line_starts[line]
+            result.append(Span(line, start, start + len(text), classify(rule, token.type)))
+        return sorted(result, key=lambda s: (s.line, s.start))
+
+~example
+    spans("#Demo\n\nSee #Other here.\n") == [
+        Span(0, 0, 5, "title"),
+        Span(2, 0, 4, "prose"),
+        Span(2, 4, 10, "ref"),
+        Span(2, 10, 16, "prose"),
+    ]
+
+A highlight is faithful when the spans tile the source: on every line
+they are in order, never overlap, leave no gap, and end exactly where
+the line ends. Nothing is dropped and nothing is coloured twice.
+
+    def tiles(source: str, found: list) -> bool:
+        lines = source.split("\n")
+        for index, line in enumerate(lines):
+            cursor = 0
+            for span in (s for s in found if s.line == index):
+                if span.start != cursor:
+                    return False
+                cursor = span.end
+            if cursor != len(line):
+                return False
+        return True
+
+##Syntax
+
+Inside code, the colours of the language itself: keywords, literals,
+comments. Which language is not guessed from file names -- a notlob
+project declares it in its binding, so that declaration is read with the
+same parser.
+
+    def binding_language(root: Path) -> str:
+        tree = parse(_terminated((root / "binding.lob").read_text(encoding="utf-8")))
+        for token in tree.scan_values(lambda v: isinstance(v, Token)):
+            if token.type == "LANGUAGE_DECL":
+                return str(token).split()[1]
+        return "text"
+
+~example
+    binding_language(Path(".")) == "python"
+
+Syntax is found by lexing whole blocks, never single lines: a string or
+comment can run across lines, and only the block knows where it began.
+The blocks are the code and claim rules of the parse tree.
+
+    def code_blocks(source: str) -> list:
+        blocks = []
+        for node in parse(_terminated(source)).iter_subtrees_topdown():
+            if str(node.data) in INDENTED_KINDS:
+                lines = [c.line - 1 for c in node.children
+                         if isinstance(c, Token) and c.type == "INDENTED_LINE"]
+                if lines:
+                    blocks.append(lines)
+        return blocks
+
+Token types from the lexer fold into the few kinds the palette has.
+
+    def syntax_kind(token_type) -> str:
+        if token_type in SyntaxToken.Comment:
+            return "comment"
+        if token_type in SyntaxToken.Keyword:
+            return "keyword"
+        if token_type in SyntaxToken.Literal:
+            return "literal"
+        if token_type in SyntaxToken.Operator or token_type in SyntaxToken.Punctuation:
+            return "punct"
+        return "code"
+
+The lexer reports each token with its offset into the block's text, so
+tokens map back to line spans exactly, splitting any that cross a line.
+
+    def syntax_spans(texts: list, line_numbers: list, language: str) -> list:
+        text = "\n".join(texts)
+        starts = [0]
+        for line in texts:
+            starts.append(starts[-1] + len(line) + 1)
+        lexer = get_lexer_by_name(language, stripnl=False, ensurenl=False)
+        result = []
+        for offset, token_type, value in lexer.get_tokens_unprocessed(text):
+            end = offset + len(value)
+            for k, line in enumerate(texts):
+                start = max(offset, starts[k])
+                stop = min(end, starts[k] + len(line))
+                if start < stop:
+                    result.append(Span(line_numbers[k], start - starts[k], stop - starts[k],
+                                       syntax_kind(token_type)))
+        return result
+
+~example
+    [s.kind for s in syntax_spans(["return 1"], [0], "python")] == ["keyword", "code", "literal"]
+
+The full highlight keeps notlob's spans for everything outside code and
+replaces the flat code and claim spans with the syntax beneath them.
+
+    def highlight(source: str, language: str) -> list:
+        lines = _terminated(source).split("\n")
+        result = [s for s in spans(source) if s.kind not in ("code", "claim")]
+        for block in code_blocks(source):
+            result += syntax_spans([lines[i] for i in block], block, language)
+        return sorted(result, key=lambda s: (s.line, s.start))
+
+Once code is syntax-coloured, claim lines no longer show by colour; they
+are remembered separately, to be marked in the margin.
+
+    def claim_lines(source: str) -> set:
+        return {s.line for s in spans(source) if s.kind == "claim"}
+
+Everything either layer can say must have a style.
+
+~example
+    set(TOKEN_KINDS.values()) | set(INDENTED_KINDS.values()) | {"structure"} <= set(TOKEN_STYLES)
+    {syntax_kind(t) for t in (SyntaxToken.Comment, SyntaxToken.Keyword, SyntaxToken.Text)} <= set(TOKEN_STYLES)
+
+Documents are generated from the constructs that matter on screen --
+prose, prose with a cross-reference, subheadings, code, claims -- and
+every one of them must tile, both as notlob sees it and with syntax.
+In this project's harness, the first draw occasionally stalls for a
+second or so -- a one-off cost of the heavy imports around it, seen
+with the machine awake as well as after a sleep -- which Hypothesis
+reports as a slow strategy. Only that timing check is relaxed; every
+generated document is still checked.
+
+~property spans-tile-source
+    @settings(suppress_health_check=[HealthCheck.too_slow])
+    @given(blocks=st.lists(st.one_of(
+        st.lists(st.text("abcdefgh", min_size=1, max_size=8), min_size=1, max_size=5).map(" ".join),
+        st.text("abcdefgh", min_size=1, max_size=8).map(lambda w: f"see #Petri Net {w}"),
+        st.text("abcdefgh", min_size=1, max_size=8).map(lambda w: "##" + w.capitalize()),
+        st.tuples(st.text("abc_", min_size=1, max_size=8), st.integers(0, 9999))
+          .map(lambda p: f"    {p[0]} = {p[1]}"),
+        st.tuples(st.text("abc", min_size=1, max_size=8), st.integers(0, 9999))
+          .map(lambda p: f"~example\n    {p[0]} == {p[1]}"),
+    ), max_size=8))
+    def _(blocks):
+        source = "#Generated\n\n" + "\n\n".join(blocks) + "\n"
+        assert tiles(source, spans(source))
+        assert tiles(source, highlight(source, "python"))
+
+##Typesetting
+
+A listing on screen is always an excerpt, typeset one line at a time.
+Three details of manim's text handling shape this. MarkupText would be
+the obvious tool, but it hard-codes a Pango wrap width, folding long
+lines; plain Text takes per-range colour and font by slice and never
+wraps. Word spacing degrades when text is typeset small, proportional
+prose most of all, so lines are typeset large and the listing scaled
+down afterwards. And a long, multi-line Text mixing many fonts does not
+reliably come back with one glyph per character, while single lines
+always do.
+
+    TYPESET_SIZE = 72
+
+    def typeset_line(text: str, ranges: list):
+        return Text(text, font=CODE_FONT, font_size=TYPESET_SIZE, disable_ligatures=True,
+                    t2c={f"[{a}:{b}]": TOKEN_STYLES[kind][0] for a, b, kind in ranges},
+                    t2f={f"[{a}:{b}]": TOKEN_STYLES[kind][1] for a, b, kind in ranges})
+
+Lines sit on one grid, prose and code alike. Three measures of the code
+font fix it: the advance of one character, which places indentation --
+Text trims leading spaces from its bounds, so indent is restored by
+column -- the height of a capital, and the pitch from line to line.
+
+    def metrics() -> tuple:
+        one = Text("x", font=CODE_FONT, font_size=TYPESET_SIZE)
+        eleven = Text("x         x", font=CODE_FONT, font_size=TYPESET_SIZE)
+        cap = Text("H", font=CODE_FONT, font_size=TYPESET_SIZE).height
+        return (eleven.width - one.width) / 10, cap, cap * 1.9
+
+Each line is set on its baseline, found from its first character that
+sits on the baseline without descending. Finding that glyph means
+knowing which glyph a character became. Text keeps one glyph per
+visible character, in order -- with ligatures off, as they are here --
+but where a colour range begins or ends on whitespace it also leaves
+empty, sizeless glyphs for the spaces. Only glyphs with extent count,
+both for mapping characters and for measuring the line. A line with no
+baseline character, a lone closing brace say, is centred on the capital
+height instead.
+
+    def visible_glyphs(line) -> list:
+        return [g for g in line.submobjects if g.width > 1e-9 or g.height > 1e-9]
+
+    BASELINE_CHARS = frozenset("abcdefhiklmnorstuvwxzABCDEFGHIJKLMNOPRSTUVWXYZ0123456789")
+
+    def glyph_indices(text: str) -> dict:
+        indices = {}
+        for position, ch in enumerate(text):
+            if not ch.isspace():
+                indices[position] = len(indices)
+        return indices
+
+~example
+    glyph_indices("a b\nc") == {0: 0, 2: 1, 4: 2}
+
+Placing a line restores its indent by column, then lifts it so its
+baseline lands on its row of the grid.
+
+    def place_line(line, text: str, row: int, advance: float, cap: float, pitch: float):
+        glyphs = visible_glyphs(line)
+        indent = len(text) - len(text.lstrip(" "))
+        line.shift(RIGHT * (indent * advance - min(g.get_left()[0] for g in glyphs)))
+        baseline = -row * pitch
+        anchor = next((p for p, ch in enumerate(text) if ch in BASELINE_CHARS), None)
+        if anchor is None or len(glyphs) != len(glyph_indices(text)):
+            middle = (min(g.get_bottom()[1] for g in glyphs) + max(g.get_top()[1] for g in glyphs)) / 2
+            line.shift(UP * (baseline + cap / 2 - middle))
+        else:
+            line.shift(UP * (baseline - glyphs[glyph_indices(text)[anchor]].get_bottom()[1]))
+        return line
+
+##Claim Bars
+
+Claim lines that follow one another share one bar.
+
+    def runs(lines: list) -> list:
+        result = []
+        for line in sorted(lines):
+            if result and result[-1][1] == line - 1:
+                result[-1] = (result[-1][0], line)
+            else:
+                result.append((line, line))
+        return result
+
+~example
+    runs([8, 1, 2, 3, 7]) == [(1, 3), (7, 8)]
+
+A bar runs from above the capitals of its first row to below the
+descenders of its last, in the margin left of column zero.
+
+    def claim_bar(top: int, bottom: int, advance: float, cap: float, pitch: float):
+        x = -CLAIM_BAR_GAP * advance
+        return Line([x, -top * pitch + cap * 1.15, 0], [x, -bottom * pitch - cap * 0.35, 0],
+                    color=CLAIM, stroke_width=CLAIM_BAR_WIDTH)
+
+##Listings
+
+A listing puts it together: the highlight of the whole source, the
+chosen lines typeset and placed on the grid, and bars beside the
+claims. Scenes that mark particular lines need the grid as well as the
+picture, so typesetting hands back the listing before it is fitted,
+its lines by source line number, and the grid's measures.
+
+    def typeset_listing(path: Path, first: int, last: int) -> tuple:
+        source = path.read_text(encoding="utf-8")
+        found = highlight(source, binding_language(find_project_root(path)))
+        lines = source.split("\n")
+        grid = metrics()
+        rows = {}
+        for row, number in enumerate(range(first, last)):
+            text = lines[number]
+            if text.strip():
+                ranges = [(s.start, s.end, s.kind) for s in found if s.line == number]
+                rows[number + 1] = place_line(typeset_line(text, ranges), text, row, *grid)
+        claims = [n - first for n in claim_lines(source) if first <= n < last]
+        bars = [claim_bar(top, bottom, *grid) for top, bottom in runs(claims)]
+        return VGroup(*rows.values(), *bars), rows, grid
+
+The plain listing is just that, shrunk to fit the frame.
+
+    def listing(path: Path, first: int, last: int):
+        return fit_to_frame(typeset_listing(path, first, last)[0])
+
+---
+
+#Tests
+
+##real sources tile
+
+Every module in the reference projects, and every module of this
+project, is highlighted without loss -- by notlob alone, and with the
+syntax of its project's declared language.
+
+    all(tiles(p.read_text(encoding="utf-8"), spans(p.read_text(encoding="utf-8"))) for p in CORPUS)
+    all(tiles(p.read_text(encoding="utf-8"), highlight(p.read_text(encoding="utf-8"), binding_language(find_project_root(p)))) for p in CORPUS)
+
+##the star module's cross-reference is found
+    Span(4, 5, 15, "ref") in spans(PETRI_MARKING.read_text(encoding="utf-8"))
+
+##the star module is TypeScript
+    binding_language(find_project_root(PETRI_MARKING)) == "typescript"
+
+#Appendix Corpus
+
+Real notlob sources to check the highlighter against: pn-chomper, the
+examples bundled with notlob, and this project's own modules.
+
+    PETRI_MARKING = Path("../ref-projects/pn-chomper/petri/marking.lob")
+
+    CORPUS = sorted(
+        list(Path("../ref-projects/pn-chomper").glob("**/*.lob"))
+        + list(Path("../ref-projects/notlob/examples").glob("**/*.lob"))
+        + list(Path(".").glob("**/*.lob"))
+    )
+
+#References
+    #Style
+    from dataclasses import dataclass
+    from pathlib import Path
+
+    from lark import Token, Tree
+    from manim import RIGHT, UP, Line, Text, VGroup
+    from notlob.parser import parse
+    from notlob.project import find_project_root
+    from pygments.lexers import get_lexer_by_name
+    from pygments.token import Token as SyntaxToken

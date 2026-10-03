@@ -1,0 +1,76 @@
+#Storyboard
+
+The teaser as a sequence of beats, written down as data before any of
+it is drawn. Each beat has a name, a length, and the few words on screen
+while it plays. There is no voice-over, so the captions carry the
+argument, and they must stay short enough to read in the time they get.
+
+The order follows the argument. It opens on the heritage -- literate
+programming -- and on one real file, Petri Marking from pn-chomper. The
+file's claims run for real; one of them is seen to mean something, as a
+chomper splits in two. Then why this matters to an agent with a context
+window, and last the whole project's name-graph, pulling back from the
+one module to everything around it.
+
+    @dataclass(frozen=True)
+    class Beat:
+        name: str
+        duration: float
+        caption: str
+
+    BEATS = [
+        Beat("heritage", 6.0, "Literate programming"),
+        Beat("one-file", 5.0, "Prose and code, one context window"),
+        Beat("claims-run", 4.5, "Every claim, checked"),
+        Beat("split", 4.0, "Code that means what it says"),
+        Beat("context", 4.2, "Less context, more meaning"),
+        Beat("graph", 6.3, "The name graph"),
+    ]
+
+The last beat's caption gives way, at the very end, to the name of the
+thing itself.
+
+    END_CARD = "notlob"
+
+##Timing
+
+A beat starts where the one before it ends, so the timeline has no gaps
+and no overlaps by construction.
+
+    def timeline(beats: list) -> list:
+        starts, clock = [], 0.0
+        for beat in beats:
+            starts.append((clock, beat))
+            clock += beat.duration
+        return starts
+
+~example
+    [start for start, _ in timeline(BEATS)][:3] == [0.0, 6.0, 11.0]
+
+The whole teaser stays under thirty seconds, the length a timeline
+autoplays without the viewer choosing to keep watching.
+
+    LIMIT = 30.0
+
+~example
+    sum(beat.duration for beat in BEATS) <= LIMIT
+
+##Captions
+
+A caption is at most six words, and every beat is named once, so a
+scene can be found for each.
+
+    CAPTION_WORDS = 6
+
+    def beat(name: str) -> Beat:
+        return next(b for b in BEATS if b.name == name)
+
+~example
+    all(len(b.caption.split()) <= CAPTION_WORDS for b in BEATS)
+    len({b.name for b in BEATS}) == len(BEATS)
+    beat("split").caption == "Code that means what it says"
+
+---
+
+#References
+    from dataclasses import dataclass

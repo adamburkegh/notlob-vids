@@ -1,0 +1,92 @@
+#Review
+
+Checking renders without watching them. A video is reviewed through a
+handful of its frames: a contact sheet of frames sampled evenly through
+it, ending on the last, and the last frame at full size for looking
+closely at detail. One command makes them for every rendered video, so
+checking a change is: render, then look at the sheets.
+
+Sheets are written beside the renders, in the media directory, which is
+generated output and not checked in.
+
+    VIDEOS = Path("../media/videos/1080p60")
+    SHEETS = Path("../media/frames")
+    SAMPLES = 4
+    THUMB = 540
+
+##Sampling
+
+Frames are taken at the end of each equal slice of the video, so the
+first sample is a quarter of the way in -- past any opening fade, when
+there is nothing yet to see -- and the last sample is the final frame,
+where a beat comes to rest.
+
+    def sample_indices(count: int, samples: int) -> list:
+        return sorted({max(0, round((k + 1) * count / samples) - 1) for k in range(samples)})
+
+~example
+    sample_indices(240, 4) == [59, 119, 179, 239]
+    sample_indices(2, 4) == [0, 1]
+
+##Sheets
+
+A video is read twice: once to learn its length, when the container does
+not record it, and once to keep only the sampled frames, so the whole
+video is never held in memory at once.
+
+    def frame_count(video: Path) -> int:
+        with av.open(str(video)) as container:
+            recorded = container.streams.video[0].frames
+            return recorded or sum(1 for _ in container.decode(video=0))
+
+The sheet lays the samples side by side at thumbnail size; the last
+frame is also kept at full size.
+
+    def contact_sheet(video: Path, sheets: Path) -> list:
+        wanted = set(sample_indices(frame_count(video), SAMPLES))
+        picks = []
+        with av.open(str(video)) as container:
+            for index, frame in enumerate(container.decode(video=0)):
+                if index in wanted:
+                    picks.append(frame.to_image())
+        sheet = Image.new("RGB", (THUMB * len(picks), THUMB))
+        for k, image in enumerate(picks):
+            sheet.paste(image.resize((THUMB, THUMB)), (k * THUMB, 0))
+        sheets.mkdir(parents=True, exist_ok=True)
+        outputs = [sheets / f"{video.stem}.png", sheets / f"{video.stem}-last.png"]
+        sheet.save(outputs[0])
+        picks[-1].save(outputs[1])
+        return outputs
+
+##Facts
+
+Some things about a render are better read than looked at: how long it
+runs, and whether it carries sound. A video's length is its frame count
+over its frame rate; its sound is described by the length of its audio
+stream, or nothing if it has none.
+
+    def describe(video: Path) -> str:
+        with av.open(str(video)) as container:
+            stream = container.streams.video[0]
+            seconds = frame_count(video) / float(stream.average_rate)
+            audio = container.streams.audio
+            sound = (f"sound {float(audio[0].duration * audio[0].time_base):.2f}s"
+                     if audio else "no sound")
+        return f"{video.stem}: {seconds:.2f}s, {sound}"
+
+Run, it makes sheets for every finished render -- the combined movies,
+not manim's partial pieces -- and says what each one is.
+
+~run
+    for video in sorted(VIDEOS.glob("*.mp4")):
+        print(describe(video))
+        for output in contact_sheet(video, SHEETS):
+            print("  ", output.resolve())
+
+---
+
+#References
+    from pathlib import Path
+
+    import av
+    from PIL import Image

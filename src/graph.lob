@@ -1,0 +1,333 @@
+#Graph
+
+Where every name in a notlob project sits on screen. The name-graph
+comes from notlob itself -- modules, subheadings, symbols, claims, and
+the edges between them -- and this module decides only where each node
+goes. Drawing is left to the scenes; everything here is plain geometry,
+so every promise the layout makes can be checked without rendering.
+
+The layout has two levels, matching the two kinds of structure in the
+graph. Inside a module, the graph is a tree: a module contains its
+subheadings, and a module or subheading defines its symbols and claims.
+Between modules it is a web of imports, uses and cross-references. So
+each module is drawn as a small flower around its own node, and the
+flowers are arranged by how the modules depend on one another.
+
+    SPACING = 1.0
+    GAP = 1.5
+
+    @dataclass(frozen=True)
+    class Layout:
+        positions: dict
+        clusters: dict
+        cluster_of: dict
+
+##Loading
+
+The graph is asked of notlob, in the project's own directory, rather
+than reconstructed from files.
+
+    def load_graph(project_dir: Path) -> dict:
+        result = subprocess.run(
+            ["notlob", "graph", "--format", "json"],
+            cwd=project_dir, capture_output=True, text=True, check=True,
+        )
+        return json.loads(result.stdout)
+
+The binding is a module too: the project's root, named by its title the
+way notlob names every module.
+
+    def binding_address(project_dir: Path) -> str:
+        title = (project_dir / "binding.lob").read_text(encoding="utf-8").splitlines()[0]
+        return module_address(title.lstrip("#").strip())
+
+##Clusters
+
+Every node belongs to the cluster of the module above it in the tree.
+Tree edges are the structural ones -- contains, defines, and the
+binding's use of its external files -- so the binding gathers its
+externals the way a module gathers its symbols.
+
+    TREE_EDGES = ("CONTAINS", "DEFINES", "USES_EXTERNAL")
+
+    def tree_parents(graph: dict) -> dict:
+        return {e["target"]: e["source"] for e in graph["edges"] if e["kind"] in TREE_EDGES}
+
+    def cluster_of(graph: dict) -> dict:
+        kinds = {n["address"]: n["kind"] for n in graph["nodes"]}
+        parents = tree_parents(graph)
+        owners = {}
+        for node in graph["nodes"]:
+            address = node["address"]
+            seen = set()
+            while kinds.get(address) != "MODULE" and address in parents and address not in seen:
+                seen.add(address)
+                address = parents[address]
+            owners[node["address"]] = address
+        return owners
+
+##Flowers
+
+Inside a cluster the module node sits at the centre. Everything it
+holds is laid in order around an outer ring, grouped by subheading, and
+each subheading sits on an inner ring at the mean angle of its own
+children -- close to what it contains. The radii are not tuned by eye:
+the outer ring is just wide enough that neighbouring nodes are #SPACING
+apart, and the inner ring just wide enough that neighbouring
+subheadings are, and at least #SPACING inside the outer.
+
+The ring is filled clockwise from the upper right. The names defined
+first in a module then run down its right-hand side, one clearly below
+the next, which is where a scene has room to label them.
+
+    FIRST_ANGLE = math.pi / 4
+
+    def _order(addresses, lines: dict) -> list:
+        return sorted(addresses, key=lambda a: (lines.get(a, 0), a))
+
+    def _ring_radius(count: int) -> float:
+        if count < 2:
+            return SPACING
+        return max(SPACING, SPACING / (2 * math.sin(math.pi / count)))
+
+    def flower(root: str, members: list, parents: dict, kinds: dict, lines: dict) -> tuple:
+        def top(address):
+            while parents.get(address) not in (root, None):
+                address = parents[address]
+            return address
+        hubs = _order([m for m in members
+                       if kinds.get(m) == "SUBHEADING" and parents.get(m) == root], lines)
+        groups = {hub: [] for hub in hubs}
+        direct = []
+        for member in members:
+            if member == root or member in groups:
+                continue
+            owner = top(member)
+            groups.get(owner, direct).append(member)
+        leaves = _order(direct, lines)
+        for hub in hubs:
+            leaves += _order(groups[hub], lines) if groups[hub] else [hub]
+        if not leaves:
+            return {root: (0.0, 0.0)}, SPACING / 2
+        angles = {leaf: FIRST_ANGLE - 2 * math.pi * k / len(leaves) for k, leaf in enumerate(leaves)}
+        hub_angles = {hub: _mean_angle([angles[c] for c in groups[hub]]) for hub in hubs if groups[hub]}
+        inner = _inner_radius(sorted(hub_angles.values()))
+        outer = max(_ring_radius(len(leaves)), inner + SPACING) if hub_angles else _ring_radius(len(leaves))
+        local = {root: (0.0, 0.0)}
+        local.update({a: (outer * math.cos(t), outer * math.sin(t)) for a, t in angles.items()})
+        local.update({a: (inner * math.cos(t), inner * math.sin(t)) for a, t in hub_angles.items()})
+        return local, outer + SPACING / 2
+
+Subheadings are placed by circular mean, and the inner ring grows until
+the two closest of them are #SPACING apart along their chord.
+
+    def _mean_angle(angles: list) -> float:
+        return math.atan2(sum(math.sin(t) for t in angles), sum(math.cos(t) for t in angles))
+
+    def _inner_radius(angles: list) -> float:
+        if len(angles) < 2:
+            return SPACING
+        gaps = [(b - a) for a, b in pairwise(angles)] + [2 * math.pi - (angles[-1] - angles[0])]
+        return max(SPACING, SPACING / (2 * math.sin(max(min(gaps), 1e-9) / 2)))
+
+~example
+    flower("m", ["m"], {}, {"m": "MODULE"}, {}) == ({"m": (0.0, 0.0)}, SPACING / 2)
+
+##Dependency Order
+
+Modules are arranged by how deep they sit in the import structure. A
+module that imports nothing is a foundation, depth zero, and goes in
+the middle; every other module sits one step further out than the
+deepest module it imports. Zooming out from any module then reveals
+what it is built on before what is built on it. The binding wraps the
+whole project, so it comes last of all.
+
+    def depths(clusters: list, imports: dict, binding) -> dict:
+        memo = {}
+        def depth(cluster, path):
+            if cluster not in memo:
+                below = [d for d in sorted(imports.get(cluster, ())) if d not in path]
+                memo[cluster] = 1 + max(depth(d, path | {cluster}) for d in below) if below else 0
+            return memo[cluster]
+        result = {c: depth(c, frozenset()) for c in sorted(clusters) if c != binding}
+        if binding in clusters:
+            result[binding] = max(result.values(), default=-1) + 1
+        return result
+
+~example
+    depths(["a", "b", "c", "p"], {"a": {"b"}, "b": {"c"}}, "p") == {"a": 2, "b": 1, "c": 0, "p": 3}
+
+Depth orders the clusters; it does not by itself give a good shape. A
+project whose imports form a long chain -- pn-chomper's do -- has one
+module per depth, and concentric rings of one module each collapse into
+a straight line. So the clusters, in depth order, are set on a
+sunflower spiral instead: the k-th sits at a distance growing with the
+square root of k, each turned by the golden angle from the last. This
+is Vogel's model of the seeds in a sunflower head. It fills a round
+disc evenly whatever the depth structure -- wide or deep -- so it suits
+a square frame, while foundations stay at the centre and what is built
+on them spirals outward, the binding last of all. The spiral's scale
+grows until every cluster clears every other.
+
+    GOLDEN_ANGLE = math.pi * (3 - math.sqrt(5))
+
+    def _clear(centres: dict, radii: dict) -> bool:
+        names = sorted(centres)
+        for i, p in enumerate(names):
+            for q in names[i + 1:]:
+                (x1, y1), (x2, y2) = centres[p], centres[q]
+                if math.hypot(x1 - x2, y1 - y2) < radii[p] + radii[q] + GAP - 1e-9:
+                    return False
+        return True
+
+    def arrange(radii: dict, depth: dict) -> dict:
+        order = sorted(radii, key=lambda c: (depth[c], c))
+        scale = 2 * max(radii.values()) + GAP
+        while True:
+            centres = {
+                c: (scale * math.sqrt(k) * math.cos(k * GOLDEN_ANGLE),
+                    scale * math.sqrt(k) * math.sin(k * GOLDEN_ANGLE))
+                for k, c in enumerate(order)
+            }
+            if _clear(centres, radii):
+                return centres
+            scale *= 1.1
+
+##Assembly
+
+Putting the levels together: flowers for every cluster, rings for the
+clusters, and each node at its cluster's centre plus its place in the
+flower.
+
+    def layout(graph: dict, binding=None) -> Layout:
+        kinds = {n["address"]: n["kind"] for n in graph["nodes"]}
+        lines = {n["address"]: n.get("start_line", 0) for n in graph["nodes"]}
+        parents = tree_parents(graph)
+        owners = cluster_of(graph)
+        members = {}
+        for address in sorted(owners):
+            members.setdefault(owners[address], []).append(address)
+        local, radii = {}, {}
+        for cluster, group in members.items():
+            local[cluster], radii[cluster] = flower(cluster, group, parents, kinds, lines)
+        imports = {}
+        for e in graph["edges"]:
+            source, target = owners.get(e["source"]), owners.get(e["target"])
+            if e["kind"] == "IMPORTS" and source and target and source != target:
+                imports.setdefault(source, set()).add(target)
+        centres = arrange(radii, depths(list(radii), imports, binding))
+        positions = {}
+        for cluster, places in local.items():
+            cx, cy = centres[cluster]
+            positions.update({a: (cx + x, cy + y) for a, (x, y) in places.items()})
+        clusters = {c: (centres[c][0], centres[c][1], radii[c]) for c in radii}
+        return Layout(positions, clusters, owners)
+
+    def project_layout(project_dir: Path) -> tuple:
+        graph = load_graph(project_dir)
+        return graph, layout(graph, binding_address(project_dir))
+
+The smallest case: a module that imports another sits outside it, and
+the foundation takes the centre.
+
+~example
+    layout(synthetic_graph([2, 1], [(1, 0)])).clusters["m0"][:2] == (0.0, 0.0)
+
+##Promises
+
+A layout is well formed when every node has a place, every node lies
+inside its cluster's circle, clusters keep #GAP between them, and nodes
+in a cluster keep #SPACING between them.
+
+    def well_formed(graph: dict, laid: Layout) -> bool:
+        addresses = sorted(n["address"] for n in graph["nodes"])
+        if set(addresses) != set(laid.positions):
+            return False
+        for a in addresses:
+            x, y, r = laid.clusters[laid.cluster_of[a]]
+            px, py = laid.positions[a]
+            if math.hypot(px - x, py - y) > r + 1e-9:
+                return False
+        names = sorted(laid.clusters)
+        for i, p in enumerate(names):
+            for q in names[i + 1:]:
+                (x1, y1, r1), (x2, y2, r2) = laid.clusters[p], laid.clusters[q]
+                if math.hypot(x1 - x2, y1 - y2) < r1 + r2 + GAP - 1e-9:
+                    return False
+        groups = {}
+        for a in addresses:
+            groups.setdefault(laid.cluster_of[a], []).append(laid.positions[a])
+        for points in groups.values():
+            for i, (x1, y1) in enumerate(points):
+                for x2, y2 in points[i + 1:]:
+                    if math.hypot(x1 - x2, y1 - y2) < SPACING - 1e-9:
+                        return False
+        return True
+
+Those promises hold for any project shape, not only the ones we have:
+modules of any size, with or without subheadings, importing one another
+in any acyclic pattern.
+
+~property layouts-are-well-formed
+    @given(data=st.data())
+    def _(data):
+        sizes = data.draw(st.lists(st.integers(min_value=0, max_value=14), min_size=1, max_size=6))
+        imports = [(i, j) for i in range(len(sizes)) for j in range(i) if data.draw(st.booleans())]
+        graph = synthetic_graph(sizes, imports)
+        assert well_formed(graph, layout(graph))
+
+---
+
+#Tests
+
+##pn-chomper
+
+The real project the teaser zooms out across: every node placed with
+every promise kept, foundations nearer the middle than the entry point,
+the binding outermost, and the same picture every time.
+
+    well_formed(PN_GRAPH, PN_LAYOUT)
+    math.hypot(*PN_LAYOUT.clusters["petri/net"][:2]) < math.hypot(*PN_LAYOUT.clusters["game/main"][:2])
+    max(PN_LAYOUT.clusters, key=lambda c: math.hypot(*PN_LAYOUT.clusters[c][:2])) == "pn/chomper"
+    layout(PN_GRAPH, "pn/chomper") == PN_LAYOUT
+
+~test externals_join_the_binding
+    PN_LAYOUT.cluster_of["index.html.tmpl"] == "pn/chomper"
+
+#Appendix Fixtures
+
+Synthetic graphs in the shape notlob produces: modules with symbols,
+some under subheadings, and imports between modules.
+
+    def synthetic_graph(sizes: list, imports: list) -> dict:
+        nodes, edges = [], []
+        for i, size in enumerate(sizes):
+            module = f"m{i}"
+            nodes.append({"address": module, "kind": "MODULE", "start_line": 1})
+            hubs = [f"{module}#Part {h}" for h in range(size // 4)]
+            for h, hub in enumerate(hubs):
+                nodes.append({"address": hub, "kind": "SUBHEADING", "start_line": 2 + h})
+                edges.append({"source": module, "target": hub, "kind": "CONTAINS"})
+            owners = [module] + hubs
+            for k in range(size):
+                leaf = f"{module}#s{k}"
+                nodes.append({"address": leaf, "kind": "SYMBOL", "start_line": 10 + k})
+                edges.append({"source": owners[k % len(owners)], "target": leaf, "kind": "DEFINES"})
+        for a, b in imports:
+            edges.append({"source": f"m{a}", "target": f"m{b}", "kind": "IMPORTS"})
+        return {"nodes": nodes, "edges": edges}
+
+The real graph, loaded once.
+
+    PN_CHOMPER = Path("../ref-projects/pn-chomper")
+    PN_GRAPH, PN_LAYOUT = project_layout(PN_CHOMPER)
+
+#References
+    import json
+    import math
+    import subprocess
+    from dataclasses import dataclass
+    from itertools import pairwise
+    from pathlib import Path
+
+    from notlob.graph import module_address

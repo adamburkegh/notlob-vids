@@ -1,0 +1,227 @@
+#Style
+
+One visual vocabulary for every video. A colour means the same thing
+wherever it appears: the yellow of a module title in a source listing is
+the yellow of a module node in the name-graph, and the green of a claim
+body is the green of a test node. The viewer learns the palette once, in
+the source, and can then read the graph without a legend.
+
+The same split runs through the typography. Prose is set in a serif,
+code in a monospace -- literate programming's two voices, visibly
+different on the page.
+
+##Frame
+
+Square, for the timeline the videos are headed to: 1080 pixels a side,
+and an equally square frame of eight manim units so layouts reason in
+units without caring about pixels.
+
+    FRAME_PIXELS = 1080
+    FRAME_UNITS = 8.0
+    MARGIN = 0.4
+    BACKGROUND = "#0E1116"
+
+    def _square(scene_class) -> None:
+        config.output_file = scene_class.__name__
+        config.pixel_width = FRAME_PIXELS
+        config.pixel_height = FRAME_PIXELS
+        config.frame_width = FRAME_UNITS
+        config.frame_height = FRAME_UNITS
+        config.background_color = BACKGROUND
+        config.media_dir = "../media"
+
+A movie for animated scenes, a single PNG for stills. Stills are how a
+layout gets checked quickly, without scrubbing through a video. Each
+output is named for its scene: manim's config is global, and would
+otherwise carry one render's file name into the next.
+
+    def render_square(scene_class) -> None:
+        _square(scene_class)
+        config.write_to_movie = True
+        config.save_last_frame = False
+        scene_class().render()
+
+    def render_still(scene_class) -> None:
+        _square(scene_class)
+        config.write_to_movie = False
+        config.save_last_frame = True
+        scene_class().render()
+
+Anything placed on screen can be fitted inside the margins: centred, and
+shrunk if it is too big. It is only ever scaled down, never up, so small
+things stay their natural size.
+
+    def fit_to_frame(mobject):
+        room = FRAME_UNITS - 2 * MARGIN
+        factor = min(room / mobject.width, room / mobject.height, 1.0)
+        return mobject.scale(factor).move_to([0, 0, 0])
+
+~example
+    fit_to_frame(Square(side_length=20)).width <= FRAME_UNITS - 2 * MARGIN
+    fit_to_frame(Square(side_length=1)).width == 1
+    fit_to_frame(Square(side_length=1).shift([5, -3, 0])).get_center().tolist() == [0, 0, 0]
+
+##Captions
+
+There is no voice-over; a beat's words sit in a band along the bottom
+of the frame, set in the prose face, so the picture above never runs
+under them. A picture that shares the frame with a caption is fitted to
+the space above the band instead of the whole frame.
+
+    CAPTION_BAND = 1.0
+    CAPTION_HEIGHT = 0.32
+
+    def fit_above_caption(mobject):
+        room = FRAME_UNITS - 2 * MARGIN
+        factor = min(room / mobject.width, (room - CAPTION_BAND) / mobject.height, 1.0)
+        return mobject.scale(factor).move_to([0, CAPTION_BAND / 2, 0])
+
+Smaller text elsewhere on screen is sized the same way as labels in the
+game board: by the height of a capital, so words with and without
+descenders come out at one size.
+
+    def sized_text(words: str, font: str, colour: str, cap: float):
+        text = Text(words, font=font, color=colour, font_size=72)
+        return text.scale(cap / Text("H", font=font, font_size=72).height)
+
+    def caption(words: str):
+        text = Text(words, font=PROSE_FONT, color=PROSE, font_size=72)
+        text.scale_to_fit_height(CAPTION_HEIGHT)
+        return text.move_to([0, -FRAME_UNITS / 2 + MARGIN + CAPTION_BAND / 2, 0])
+
+A fitted picture and its caption never overlap.
+
+~example
+    fit_above_caption(Square(side_length=20)).get_bottom()[1] >= caption("Every claim, checked").get_top()[1]
+
+##Source Colours
+
+Kinds of source text, as the highlighter classifies them, with a colour
+and a font family each.
+
+    PROSE_FONT = "Georgia"
+    CODE_FONT = "Consolas"
+
+    TITLE = "#F4D35E"
+    SUBHEADING = "#EE964B"
+    PROSE = "#E8E6E3"
+    REF = "#4CC9F0"
+    CODE = "#8EC5E8"
+    SIGIL = "#C77DFF"
+    CLAIM = "#7BC67E"
+    STRUCTURE = "#6C7380"
+
+Inside code, the language's own syntax is coloured too, but quietly: a
+cool, muted sub-palette that never borrows a notlob colour. Identifiers
+keep the code blue -- the same blue as symbol nodes in the graph --
+keywords are nearly white, literals a desaturated tan, comments recede.
+Structure stays loud and syntax stays soft, so the notlob colours still
+read at a glance.
+
+    KEYWORD = "#E3ECF5"
+    LITERAL = "#C8B79A"
+    COMMENT = "#5E6875"
+    PUNCT = "#7F8C99"
+
+Claims are code as well, and are coloured as code. What marks them as
+claims is a bar of claim green in the margin beside them, set one
+character width clear of the text.
+
+    CLAIM_BAR_WIDTH = 3
+    CLAIM_BAR_GAP = 1.0
+
+    TOKEN_STYLES = {
+        "title": (TITLE, PROSE_FONT),
+        "subheading": (SUBHEADING, PROSE_FONT),
+        "prose": (PROSE, PROSE_FONT),
+        "ref": (REF, PROSE_FONT),
+        "bullet": (PROSE, PROSE_FONT),
+        "code": (CODE, CODE_FONT),
+        "keyword": (KEYWORD, CODE_FONT),
+        "literal": (LITERAL, CODE_FONT),
+        "comment": (COMMENT, CODE_FONT),
+        "punct": (PUNCT, CODE_FONT),
+        "sigil": (SIGIL, CODE_FONT),
+        "claim": (CLAIM, CODE_FONT),
+        "structure": (STRUCTURE, CODE_FONT),
+    }
+
+##Graph Colours
+
+Node colours reuse the source colours of the text each node comes from.
+Every kind of claim -- example, property, test -- is claim green; a run
+block keeps its sigil's violet. Edges are quiet except REFERENCES: a
+prose cross-reference is the literate link, and it keeps the cyan it has
+in the source.
+
+    NODE_COLOURS = {
+        "MODULE": TITLE,
+        "SUBHEADING": SUBHEADING,
+        "SYMBOL": CODE,
+        "EXAMPLE": CLAIM,
+        "PROPERTY": CLAIM,
+        "TEST": CLAIM,
+        "RUN": SIGIL,
+        "EXTERNAL": STRUCTURE,
+    }
+
+    EDGE_COLOURS = {
+        "CONTAINS": STRUCTURE,
+        "DEFINES": STRUCTURE,
+        "IMPORTS": TITLE,
+        "USES": CODE,
+        "USES_EXTERNAL": STRUCTURE,
+        "REFERENCES": REF,
+    }
+
+Edges differ in weight as well as colour. The tree edges inside a
+module are quiet; uses between symbols are the faintest of all, so a
+hundred of them read as texture rather than tangle; imports and
+cross-references keep their colour but stay light enough that a module
+which references everything -- an overview, say -- does not swamp the
+picture. Any single edge the story is about is brought up separately,
+at full strength.
+
+    EDGE_OPACITY = {
+        "CONTAINS": 0.35,
+        "DEFINES": 0.35,
+        "IMPORTS": 0.25,
+        "USES": 0.12,
+        "USES_EXTERNAL": 0.35,
+        "REFERENCES": 0.4,
+    }
+
+    EDGE_WIDTH = {
+        "CONTAINS": 1.5,
+        "DEFINES": 1.5,
+        "IMPORTS": 1.5,
+        "USES": 1.0,
+        "USES_EXTERNAL": 1.5,
+        "REFERENCES": 1.5,
+    }
+
+The palette has to cover whatever notlob can produce. The graph schema
+is notlob's own statement of that, so the check reads it directly.
+
+~example
+    schema_kinds("Node") <= set(NODE_COLOURS)
+    schema_kinds("Edge") <= set(EDGE_COLOURS)
+    schema_kinds("Edge") <= set(EDGE_OPACITY) & set(EDGE_WIDTH)
+
+---
+
+#Appendix Schema
+
+The name-graph JSON schema, from the notlob reference clone.
+
+    NAME_GRAPH_SCHEMA = Path("../ref-projects/notlob/notlob/schema/name_graph.json")
+
+    def schema_kinds(definition: str) -> set:
+        schema = json.loads(NAME_GRAPH_SCHEMA.read_text(encoding="utf-8"))
+        return set(schema["definitions"][definition]["properties"]["kind"]["enum"])
+
+#References
+    import json
+    from pathlib import Path
+
+    from manim import Square, Text, config

@@ -1,0 +1,173 @@
+#Evidence
+
+Everything the teaser claims about notlob, it shows by running the real
+thing. This module gathers that evidence from pn-chomper: the results of
+actually running its claims, measurements of how much an agent would
+have to read with and without the name-graph, and the states of a real
+Petri net produced by pn-chomper's own firing rule. Nothing here is
+typed in by hand; if pn-chomper changes, the video changes with it.
+
+The star of the teaser is one module of that project.
+
+    STAR_PROJECT = Path("../ref-projects/pn-chomper")
+    STAR_MODULE = STAR_PROJECT / "petri" / "marking.lob"
+    WORK = Path("../work")
+
+##Claim Results
+
+notlob reports each claim it runs as a line beginning with its status
+and the source position of the assertion -- one line per assertion for
+examples and tests, one per property at its sigil. The status by source
+line is exactly what is needed to put a tick beside the line on screen.
+
+    RESULT_LINE = re.compile(r"^(PASS|FAIL|ERROR)\s+\S+?:(\d+)\s")
+
+    def parse_results(output: str) -> dict:
+        results = {}
+        for line in output.splitlines():
+            match = RESULT_LINE.match(line)
+            if match:
+                results[int(match.group(2))] = match.group(1)
+        return results
+
+~example
+    parse_results("PASS   marking.lob:136  x\nnoise\nFAIL   marking.lob:9  y") == {136: "PASS", 9: "FAIL"}
+
+The claims are run in the project itself, with its own toolchain, the
+way its author runs them.
+
+    @cache
+    def claim_results(project: Path, module: str) -> dict:
+        # check=False: a failing claim is a result to show, not an error here.
+        result = subprocess.run(["notlob", "test", module], cwd=project,
+                                capture_output=True, text=True, check=False)
+        return parse_results(result.stdout)
+
+##Context
+
+The question an agent might be asked about pn-chomper: how does firing
+a transition work? Without the name-graph, a common way in is to search
+the sources for the word and read each file that matches. With it, the
+agent asks notlob for the one section that answers the question. Both
+are measured in characters of text the agent takes in. The search side
+assumes every matching file is read whole; an agent may read less, so
+this is the cost of the plain approach rather than its floor.
+
+    QUESTION = "How does firing a transition work?"
+    SEARCH_WORD = "fire"
+    ANSWER_ADDRESS = "petri/marking#Enabling and Firing"
+
+A search reports each matching line with its file and line number.
+
+    def search_hits(sources: dict, word: str) -> str:
+        pattern = re.compile(rf"\b{re.escape(word)}\b")
+        return "".join(
+            f"{name}:{number}:{line}\n"
+            for name, text in sorted(sources.items())
+            for number, line in enumerate(text.split("\n"), 1)
+            if pattern.search(line)
+        )
+
+~example
+    search_hits({"a.lob": "x\nfire it\nfired", "b.lob": "no"}, "fire") == "a.lob:2:fire it\n"
+
+The plain approach costs the search output plus every file it matched.
+
+    def _sources(project: Path) -> dict:
+        return {str(p.relative_to(project)): p.read_text(encoding="utf-8")
+                for p in sorted(project.glob("**/*.lob"))}
+
+    def search_files(project: Path, word: str) -> list:
+        hits = search_hits(_sources(project), word)
+        return sorted({line.split(":", 1)[0] for line in hits.splitlines()})
+
+    def search_context(project: Path, word: str) -> int:
+        sources = _sources(project)
+        hits = search_hits(sources, word)
+        return len(hits) + sum(len(sources[name]) for name in search_files(project, word))
+
+Between the two sits the cost of one module read whole -- the essay,
+the code and the claims together, which is what a literate source file
+puts in an agent's context window at once.
+
+    def file_context(path: Path) -> int:
+        return len(path.read_text(encoding="utf-8"))
+
+The notlob approach costs what the query returns.
+
+    def query_context(project: Path, address: str) -> int:
+        result = subprocess.run(["notlob", "query", "content", address], cwd=project,
+                                capture_output=True, text=True, check=True)
+        return len(result.stdout)
+
+##The Split
+
+The second example in Petri Marking checks a split: one token in place
+p1 fires through transition t1, and afterwards p2 and p3 hold one each.
+To draw it, the net and both markings are taken from pn-chomper's own
+code. The module is built by notlob into a working directory of ours,
+a few lines are added that print the net and the markings as JSON, and
+the result is run with pn-chomper's own TypeScript runner.
+
+    DUMP = """
+    console.log(JSON.stringify({
+      places: [..._testNet.places.values()],
+      transitions: [..._testNet.transitions.values()],
+      arcs: _testNet.arcs,
+      before: Object.fromEntries(_m0),
+      after: Object.fromEntries(_m1),
+    }));
+    """
+
+    @cache
+    def split_states(project: Path, module: str) -> dict:
+        out = (WORK / project.name).resolve()
+        # check=False: pn-chomper's on-build hook expects a whole-game build and
+        # warns on a single module; the module itself is still built.
+        subprocess.run(["notlob", "build", "--skip-tests", "--output", str(out), module],
+                       cwd=project, capture_output=True, text=True, check=False)
+        built = out / (module.removesuffix(".lob").replace("/", "_") + ".ts")
+        script = out / "split_dump.ts"
+        script.write_text(built.read_text(encoding="utf-8") + DUMP, encoding="utf-8")
+        runner = project.resolve() / "node_modules" / "tsx" / "dist" / "cli.mjs"
+        result = subprocess.run(["node", str(runner), str(script)],
+                                capture_output=True, text=True, check=True)
+        return json.loads(result.stdout)
+
+Run for real, pn-chomper's firing rule gives exactly the split its
+example states.
+
+~example
+    split_states(STAR_PROJECT, "petri/marking.lob")["before"] == {"p1": 1}
+    split_states(STAR_PROJECT, "petri/marking.lob")["after"] == {"p1": 0, "p2": 1, "p3": 1}
+
+---
+
+#Tests
+
+##the claims really pass
+
+Every claim in the star module runs, and passes.
+
+    len(claim_results(STAR_PROJECT, "petri/marking.lob")) > 0
+    set(claim_results(STAR_PROJECT, "petri/marking.lob").values()) == {"PASS"}
+
+##the context comparison favours the query
+
+    query_context(STAR_PROJECT, ANSWER_ADDRESS) * 5 < search_context(STAR_PROJECT, SEARCH_WORD)
+
+##one module costs less than the search, more than the query
+
+    query_context(STAR_PROJECT, ANSWER_ADDRESS) < file_context(STAR_MODULE) < search_context(STAR_PROJECT, SEARCH_WORD)
+
+##the split net is the whole test net
+
+    len(split_states(STAR_PROJECT, "petri/marking.lob")["places"]) == 3
+    len(split_states(STAR_PROJECT, "petri/marking.lob")["arcs"]) == 3
+
+#References
+    import json
+    import re
+    import subprocess
+    from functools import cache
+    from pathlib import Path

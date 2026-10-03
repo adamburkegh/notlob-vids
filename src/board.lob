@@ -1,0 +1,348 @@
+#Board
+
+pn-chomper's game picture, redrawn for the screen. The game draws its
+Petri nets as a maze: places are rooms, transitions are doorways, arcs
+are corridors, and the tokens are chompers. When the teaser shows a
+net, it should look like the game, not like a diagram of it -- so this
+module follows the game's own renderer, the Render Canvas module of
+pn-chomper, rather than inventing a look.
+
+Two kinds of thing are taken from that renderer. Its geometry and its
+rules are ported as pure functions, each checked against what the
+original computes. Its colours and sizes are transcribed, in the
+renderer's own spelling, and a test checks that every one of them still
+appears in the renderer's source -- so when the game's look changes,
+this module fails rather than quietly showing last season's game.
+
+~example
+    all(c in RENDERER for c in transcribed_colours())
+    all(fact in RENDERER for fact in RENDERER_FACTS)
+
+The board is drawn in the game's palette, on the game's background: a
+picture of the game inside the picture of the code.
+
+A net arrives as pn-chomper's own data, the shape its places,
+transitions and arcs have in its code: places and transitions with an
+id, a label and canvas coordinates, arcs with a source, a target and a
+weight.
+
+What is not ported: arcs that return toward the start, which the game
+draws dashed; arcs on a map's lower tier, which it curves; and the
+bridges it draws where corridors cross. The nets shown here have none of
+these. A net that did would be drawn with plain corridors throughout.
+
+##Measures
+
+From the renderer's Drawing Places and Drawing Transitions sections:
+rooms have a radius of 24 canvas pixels, doorways are 18 by 40, a
+chomper's radius is 10 with a mouth opening 0.35 radians either side,
+room labels sit 13 pixels below a room and doorway labels 12 below a
+doorway, cut to eight characters.
+
+    PLACE_RADIUS = 24
+    DOOR_WIDTH = 18
+    DOOR_HEIGHT = 40
+    CHOMPER_RADIUS = 10
+    MOUTH = 0.35
+    ROOM_LABEL_DROP = 13
+    DOOR_LABEL_DROP = 12
+    DOOR_LABEL_LENGTH = 8
+
+Canvas pixels run downward; the scene's units run upward. One room
+radius becomes one scene unit.
+
+    PIXEL = 1 / PLACE_RADIUS
+
+    def to_scene(x: float, y: float) -> list:
+        return [x * PIXEL, -y * PIXEL, 0.0]
+
+~example
+    to_scene(48, 24) == [2.0, -1.0, 0.0]
+
+##Palette
+
+Colours are kept exactly as the renderer writes them, short forms
+included, so they can be looked for in its source. From the renderer:
+the cleared canvas (clearCanvas), rooms and labels (Drawing Places),
+chompers (Drawing Chompers and Ghosts), and doorways by role and by
+whether they can fire (Drawing Transitions).
+
+    GAME_BACKGROUND = "#111"
+    ROOM_FILL = "#1a1a1a"
+    ROOM_EDGE_EMPTY = "#707078"
+    ROOM_EDGE_OCCUPIED = "#9a9aa2"
+    LABEL = "#a8a8b0"
+    CHOMPER = "#ffe000"
+
+    DOORS = {
+        ("fork", True): ("#552200", "#ff8800", "#ffaa44"),
+        ("fork", False): ("#1e0d00", "#cc5500", "#995522"),
+        ("join", True): ("#003344", "#00ccff", "#44ddff"),
+        ("join", False): ("#001520", "#0088bb", "#006688"),
+        ("regular", True): ("#554400", "#ffe000", None),
+        ("regular", False): ("#1a1a1a", "#707078", None),
+    }
+
+Corridors (Drawing Corridors) have two looks here. A plain corridor is
+grey. A corridor touching a doorway that can fire right now is tinted a
+muted gold, the game's cue for where a move is possible. Each look is a
+fill, an edge, a centre stripe and an arrowhead.
+
+    CORRIDOR_PLAIN = ("#222226", "#707078", "#34343a", "#8a8a92")
+    CORRIDOR_MUTED = ("#26230f", "#6e6318", "#3a3412", "#bfa800")
+
+manim wants the long form of a colour.
+
+    def colour(spelling: str) -> str:
+        if len(spelling) == 4:
+            return "#" + "".join(ch * 2 for ch in spelling[1:])
+        return spelling
+
+~example
+    colour("#111") == "#111111"
+    colour("#1a1a1a") == "#1a1a1a"
+
+##Corridors
+
+The renderer's corridor geometry, ported: a band from one end to the
+other, clipped back from both ends by a margin that shrinks for short
+corridors, with a centre stripe and an arrowhead at the target end.
+Corridors under 20 pixels are not drawn at all.
+
+    def corridor(x1: float, y1: float, x2: float, y2: float):
+        angle = math.atan2(y2 - y1, x2 - x1)
+        length = math.hypot(x2 - x1, y2 - y1)
+        if length < 20:
+            return None
+        margin = min(28, max(8, length * 0.30))
+        half = min(16, max(4, length * 0.18))
+        cos, sin = math.cos(angle), math.sin(angle)
+        sx, sy = x1 + cos * margin, y1 + sin * margin
+        ex, ey = x2 - cos * margin, y2 - sin * margin
+        px, py = -sin, cos
+        return {
+            "band": [(sx + px * half, sy + py * half), (ex + px * half, ey + py * half),
+                     (ex - px * half, ey - py * half), (sx - px * half, sy - py * half)],
+            "stripe": [(sx, sy), (ex, ey)],
+            "arrow": [(ex + cos * 14, ey + sin * 14), (ex + px * 7, ey + py * 7),
+                      (ex - px * 7, ey - py * 7)],
+        }
+
+A hundred-pixel corridor keeps the full 28-pixel margin and a 16-pixel
+half-width; a ten-pixel one is not drawn.
+
+~example
+    corridor(0, 0, 100, 0)["stripe"] == [(28.0, 0.0), (72.0, 0.0)]
+    corridor(0, 0, 100, 0)["arrow"][0] == (86.0, 0.0)
+    corridor(0, 0, 10, 0) is None
+
+##Doorways
+
+A doorway's look depends on its role, computed from its arcs exactly as
+the renderer does: more than one way out is a fork, more than one way in
+is a join, anything else is regular.
+
+    def transition_kind(net: dict, transition: str) -> str:
+        places = {p["id"] for p in net["places"]}
+        outs = [a for a in net["arcs"] if a["source"] == transition and a["target"] in places]
+        ins = [a for a in net["arcs"] if a["target"] == transition and a["source"] in places]
+        if len(outs) > 1:
+            return "fork"
+        if len(ins) > 1:
+            return "join"
+        return "regular"
+
+~example
+    transition_kind(SPLIT_NET, "t1") == "fork"
+
+It also depends on whether the doorway can fire, which is the Petri net
+enabling rule: every place leading in holds at least the tokens its arc
+needs. The board works this out from the marking it is given, so it
+draws the state of the game, not just its map.
+
+    def can_fire(net: dict, marking: dict, transition: str) -> bool:
+        places = {p["id"] for p in net["places"]}
+        return all(marking.get(a["source"], 0) >= a.get("weight", 1)
+                   for a in net["arcs"]
+                   if a["target"] == transition and a["source"] in places)
+
+Before the split the door can fire; after it, with the first room empty,
+it cannot.
+
+~example
+    can_fire(SPLIT_NET, {"p1": 1}, "t1")
+    not can_fire(SPLIT_NET, {"p1": 0, "p2": 1, "p3": 1}, "t1")
+
+##Drawing
+
+Each piece is drawn at its canvas position, converted to the scene.
+Labels share one scale, set by the height of a capital, so a label with
+descenders is not shrunk to fit. The game hides names on its own
+built-in maps and shows them for any other net, whose names carry its
+meaning; a caller chooses.
+
+    def label(words: str, pixels: float, x: float, y: float):
+        text = Text(words, font=CODE_FONT, color=colour(LABEL), font_size=72)
+        text.scale(pixels * 0.7 * PIXEL / Text("H", font=CODE_FONT, font_size=72).height)
+        return text.move_to(to_scene(x, y))
+
+A room is a dark circle, its edge lighter while a chomper is inside.
+
+    def draw_room(place: dict, occupied: bool, show_labels: bool):
+        edge = ROOM_EDGE_OCCUPIED if occupied else ROOM_EDGE_EMPTY
+        room = Circle(radius=PLACE_RADIUS * PIXEL, fill_color=colour(ROOM_FILL), fill_opacity=1,
+                      stroke_color=colour(edge), stroke_width=3)
+        room.move_to(to_scene(place["x"], place["y"]))
+        parts = [room]
+        if show_labels:
+            parts.append(label(place["label"], 10, place["x"],
+                               place["y"] + PLACE_RADIUS + ROOM_LABEL_DROP))
+        return VGroup(*parts)
+
+A doorway is a rectangle in the colours of its role and state; a fork
+carries the renderer's chevron, its strokes at the same pixel offsets.
+
+    def draw_doorway(transition: dict, kind: str, enabled: bool, show_labels: bool):
+        fill, border, mark = DOORS[(kind, enabled)]
+        x, y = transition["x"], transition["y"]
+        door = Rectangle(width=DOOR_WIDTH * PIXEL, height=DOOR_HEIGHT * PIXEL,
+                         fill_color=colour(fill), fill_opacity=1, stroke_color=colour(border),
+                         stroke_width=4 if enabled else 3).move_to(to_scene(x, y))
+        parts = [door]
+        if kind == "fork":
+            chevron = VMobject(stroke_color=colour(mark), stroke_width=2)
+            chevron.set_points_as_corners([to_scene(x - 3, y - 6), to_scene(x + 4, y),
+                                           to_scene(x - 3, y + 6)])
+            parts.append(chevron)
+        if show_labels:
+            parts.append(label(transition["label"][:DOOR_LABEL_LENGTH], 9, x,
+                               y + DOOR_HEIGHT / 2 + DOOR_LABEL_DROP))
+        return VGroup(*parts)
+
+A corridor is its band, stripe and arrowhead, in the renderer's order
+and in the colours of its look.
+
+    def draw_corridor(geometry: dict, look: tuple):
+        fill, edge, stripe, arrow = (colour(c) for c in look)
+        band = Polygon(*[to_scene(*p) for p in geometry["band"]], fill_color=fill,
+                       fill_opacity=1, stroke_color=edge, stroke_width=2)
+        centre = Line(*[to_scene(*p) for p in geometry["stripe"]], color=stripe, stroke_width=6)
+        head = Polygon(*[to_scene(*p) for p in geometry["arrow"]], fill_color=arrow,
+                       fill_opacity=1, stroke_width=0)
+        return VGroup(band, centre, head)
+
+A chomper is a disc with the mouth cut out, facing right as the game
+draws it.
+
+    def draw_chomper(radius: float):
+        return AnnularSector(inner_radius=0, outer_radius=radius, angle=2 * math.pi - 2 * MOUTH,
+                             start_angle=MOUTH, color=colour(CHOMPER), fill_opacity=1,
+                             stroke_width=0)
+
+The whole board sits on the game's own background, drawn for one
+marking: doorways that can fire are lit, and the corridors touching them
+tinted. Rooms and doors are returned by id, so a scene can find where
+things are after the board has been placed and scaled. Two boards of
+the same net have the same shape, piece for piece, so one marking's
+board can be turned into another's.
+
+    def draw_board(net: dict, marking: dict, show_labels: bool = False) -> tuple:
+        where = {n["id"]: n for n in net["places"] + net["transitions"]}
+        live = {t["id"] for t in net["transitions"] if can_fire(net, marking, t["id"])}
+        corridors = []
+        for arc in net["arcs"]:
+            a, b = where[arc["source"]], where[arc["target"]]
+            geometry = corridor(a["x"], a["y"], b["x"], b["y"])
+            if geometry:
+                lit = arc["source"] in live or arc["target"] in live
+                corridors.append(draw_corridor(geometry, CORRIDOR_MUTED if lit else CORRIDOR_PLAIN))
+        rooms = {p["id"]: draw_room(p, marking.get(p["id"], 0) > 0, show_labels)
+                 for p in net["places"]}
+        doors = {t["id"]: draw_doorway(t, transition_kind(net, t["id"]), t["id"] in live,
+                                       show_labels)
+                 for t in net["transitions"]}
+        content = VGroup(*corridors, *doors.values(), *rooms.values())
+        panel = RoundedRectangle(width=content.width + 2, height=content.height + 1.5,
+                                 corner_radius=0.3, fill_color=colour(GAME_BACKGROUND),
+                                 fill_opacity=1, stroke_color=colour(ROOM_EDGE_EMPTY),
+                                 stroke_width=2).move_to(content)
+        return VGroup(panel, content), rooms, doors
+
+With a chomper in the first room, the split net's door is drawn in the
+lit fork's border colour; once the room is empty, in the unlit one.
+
+~example
+    draw_board(SPLIT_NET, {"p1": 1})[2]["t1"][0].get_stroke_color().to_hex().lower() == "#ff8800"
+    draw_board(SPLIT_NET, {"p2": 1, "p3": 1})[2]["t1"][0].get_stroke_color().to_hex().lower() == "#cc5500"
+
+---
+
+#Tests
+
+##the board shows the whole net
+
+Every arc long enough to draw becomes a corridor, and every place and
+transition is drawn once.
+
+    len(draw_board(SPLIT_NET, {"p1": 1})[1]) == 3
+    len(draw_board(SPLIT_NET, {"p1": 1})[2]) == 1
+    len(draw_board(SPLIT_NET, {"p1": 1})[0][1]) == 3 + 1 + 3
+
+#Appendix Fixtures
+
+The split net, in the shape pn-chomper's code gives it -- the same net
+Petri Marking's examples use.
+
+    SPLIT_NET = {
+        "places": [
+            {"id": "p1", "label": "Start", "x": 0, "y": 0},
+            {"id": "p2", "label": "Left", "x": 200, "y": -50},
+            {"id": "p3", "label": "Right", "x": 200, "y": 50},
+        ],
+        "transitions": [{"id": "t1", "label": "Door", "x": 100, "y": 0}],
+        "arcs": [
+            {"id": "a1", "source": "p1", "target": "t1", "weight": 1},
+            {"id": "a2", "source": "t1", "target": "p2", "weight": 1},
+            {"id": "a3", "source": "t1", "target": "p3", "weight": 1},
+        ],
+    }
+
+The renderer's source, and what this module took from it.
+
+    RENDERER = Path("../ref-projects/pn-chomper/render/canvas.lob").read_text(encoding="utf-8")
+
+    def transcribed_colours() -> list:
+        doors = [c for look in DOORS.values() for c in look if c]
+        return [GAME_BACKGROUND, ROOM_FILL, ROOM_EDGE_EMPTY, ROOM_EDGE_OCCUPIED, LABEL, CHOMPER,
+                *CORRIDOR_PLAIN, *CORRIDOR_MUTED, *doors]
+
+    RENDERER_FACTS = [
+        "radius = 24",
+        "const w = 18, h = 40",
+        "const mouth = 0.35",
+        "drawChomper(ctx, p.x, p.y + oy, 10)",
+        "Math.min(28, Math.max(8, len * 0.30))",
+        "Math.min(16, Math.max(4, len * 0.18))",
+        "if (len < 20) return;",
+        "const ah = 14",
+        "p.y + radius + 13",
+        "t.y + h / 2 + 12",
+        "t.label.slice(0, 8)",
+    ]
+
+#References
+    #Style
+    import math
+    from pathlib import Path
+
+    from manim import (
+        AnnularSector,
+        Circle,
+        Line,
+        Polygon,
+        Rectangle,
+        RoundedRectangle,
+        Text,
+        VGroup,
+        VMobject,
+    )
