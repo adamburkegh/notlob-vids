@@ -18,10 +18,10 @@ the frame, the palette and the captions. #Highlight turns notlob source
 into a coloured listing. #Graph decides where every name in a project's
 name-graph sits. #Evidence runs the real things -- a project's claims,
 a query, its code -- and returns what happened. #Board draws a Petri net
-the way pn-chomper's own renderer does. #Sound synthesises a sound track
-from the same timings the pictures use, though the teaser is at present
-rendered silent. #Review makes contact sheets of rendered videos, so a
-render can be checked from a few of its frames.
+the way pn-chomper's own renderer does. #Sound synthesises the music:
+one voice and repeating patterns, which a video's score sets on a single
+pulse for as long as its storyboard lasts. #Review makes contact sheets
+of rendered videos, so a render can be checked from a few of its frames.
 
 Rendering uses manim. The environment is declared in pyproject.toml and
 rebuilt with run.sh, which also provides the test, render and frames

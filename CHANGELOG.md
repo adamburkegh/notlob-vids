@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- **Sound**: the teaser now has music. It is synthesised when the video
+  is rendered, from a score in `src/teaser.lob`: a two-note rocking line
+  on one unbroken pulse, a low note that alternates between two
+  harmonies, and an arpeggio above them for the middle bars. It fades in
+  from almost nothing and is over just before the video ends. The score
+  takes its length from the storyboard and does not follow the beats;
+  claims check that the pulse never breaks, that nothing loud is struck
+  at once, and that the music ends before the picture does.
+- **Teaser**: the second beat's caption now reads "Prose and code in one
+  context window", and captions may run to seven words.
+
 ## 0.4.0 - 2026-10-03
 
 First version under source control.

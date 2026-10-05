@@ -1,134 +1,170 @@
 #Sound
 
 The sound of the videos, made the way the pictures are: by a program.
-Nothing is recorded and nothing is sampled. A few wooden voices are
-synthesised from sine waves, placed on a timeline at the moments the
-pictures change, and mixed into one file.
+Nothing is recorded and nothing is sampled. One voice is synthesised
+from sine waves, its notes are placed on a timeline, and the result is
+mixed into one file.
 
-The character is soft and woody -- mallet on a wooden bar, a block
-tapped -- and sparse. There is no music running underneath. A sound
-happens because something on screen happened, so the sound says the
-same thing the picture does: a tick lands, a name lifts, a bar grows.
+The music is a quiet, slow rocking figure over low notes, in the manner
+of the minimalists' piano pieces: a few notes go back and forth on a
+pulse that never breaks, a low note is struck under them now and then,
+a slow arpeggio turns above them for a while, and very little else
+happens. It fades in, it fades out, and in between it stays out of the
+pictures' way.
+
+In this version, nothing in the music marks an event. The voice here dies away
+with a slow pulse. It runs through the whole video without scene awareness,
+which covers any clumsiness cutting on scenes or takes.
 
     RATE = 44100
 
-##The Scale
+##Notes
 
-Every pitched sound sits on one pentatonic scale, five notes to the
-octave, so any notes sounding together are consonant and no melody has
-to be composed. A pitch is a step up that scale from a low C.
+A note is a number of semitones above a low A, in equal temperament.
+Twelve semitones up is an octave, twice the frequency.
 
-    BASE = 130.81
-    PENTATONIC = (0, 2, 4, 7, 9)
+    BASE = 110.0
 
-    def pitch(step: int) -> float:
-        octave, degree = divmod(step, len(PENTATONIC))
-        return BASE * 2 ** (octave + PENTATONIC[degree] / 12)
-
-Five steps up is an octave, twice the frequency.
+    def frequency(semitones: float) -> float:
+        return BASE * 2 ** (semitones / 12)
 
 ~example
-    pitch(0) == BASE
-    abs(pitch(5) - 2 * BASE) < 1e-9
+    frequency(0) == BASE
+    abs(frequency(12) - 2 * BASE) < 1e-9
 
-##Voices
+##The Keys
 
-A voice turns a frequency and a loudness into samples. Each starts from
-silence, so no sound begins with a click, and is faded to silence over
-its last few milliseconds, so none ends with one.
+The voice is a soft piano-like tone: a fundamental and four harmonics
+above it, each weaker than the one below and each dying away faster, so
+a note begins with some brightness and settles into a plain hum as it
+fades. It is struck gently -- the sound takes a hundredth of a second to
+arrive -- and it is let go gently too: a note is released over its last
+quarter of a second, so one that is still sounding when its time is up
+fades out instead of stopping. Played low and quietly it rings rather
+than plinks.
 
-    def _shape(length: float, attack: float):
+    HARMONICS = (1.0, 0.45, 0.25, 0.12, 0.06)
+    RING = 1.4
+    RELEASE = 0.25
+
+    def keys(semitones: float, gain: float, length: float):
         t = np.arange(int(RATE * length)) / RATE
-        return t, np.minimum(t / attack, 1.0) * np.minimum((length - t) / 0.02, 1.0)
+        shape = np.minimum(t / 0.01, 1.0) * np.clip((length - t) / RELEASE, 0, 1)
+        f = frequency(semitones)
+        tone = sum(level * np.sin(2 * np.pi * (k + 1) * f * t) * np.exp(-t * (k + 1) / RING)
+                   for k, level in enumerate(HARMONICS))
+        return gain * shape * tone / sum(HARMONICS)
 
-A marimba bar sounds its fundamental and two overtones, at four and ten
-times the frequency, each dying away faster than the one below. That
-quick loss of the upper partials is what makes the note wooden rather
-than bell-like.
-
-    def marimba(frequency: float, gain: float, length: float = 0.9):
-        t, shape = _shape(length, 0.004)
-        tone = (np.sin(2 * np.pi * frequency * t) * np.exp(-t / 0.25)
-                + 0.35 * np.sin(2 * np.pi * 4 * frequency * t) * np.exp(-t / 0.08)
-                + 0.12 * np.sin(2 * np.pi * 10 * frequency * t) * np.exp(-t / 0.03))
-        return gain * shape * tone / 1.47
-
-A woodblock is shorter and drier: two partials that are not in tune
-with each other, gone in a few hundredths of a second.
-
-    def woodblock(frequency: float, gain: float, length: float = 0.18):
-        t, shape = _shape(length, 0.002)
-        tone = (np.sin(2 * np.pi * frequency * t) * np.exp(-t / 0.035)
-                + 0.5 * np.sin(2 * np.pi * 2.6 * frequency * t) * np.exp(-t / 0.02))
-        return gain * shape * tone / 1.5
-
-A knock is a low thud with a brush of noise at its start. The noise is
-seeded, so the same knock is made every time.
-
-    def knock(frequency: float, gain: float, length: float = 0.3):
-        t, shape = _shape(length, 0.002)
-        noise = np.random.default_rng(7).uniform(-1, 1, len(t)) * np.exp(-t / 0.01)
-        tone = np.sin(2 * np.pi * frequency * t) * np.exp(-t / 0.06) + 0.3 * noise
-        return gain * shape * tone / 1.3
-
-    VOICES = {"marimba": marimba, "woodblock": woodblock, "knock": knock}
-
-A voice never exceeds the loudness it was asked for, and is silent at
-both ends.
+A note never exceeds the loudness it was asked for, lasts as long as it
+was asked to, is silent at both ends, and has faded well below its
+starting loudness before a long note is over.
 
 ~example
-    all(np.abs(VOICES[v](pitch(7), 0.5)).max() <= 0.5 for v in VOICES)
-    all(VOICES[v](pitch(7), 0.5)[0] == 0 for v in VOICES)
-    all(abs(VOICES[v](pitch(7), 0.5)[-1]) < 0.001 for v in VOICES)
+    np.abs(keys(12, 0.5, 2.0)).max() <= 0.5
+    len(keys(12, 0.5, 2.0)) == int(RATE * 2.0)
+    keys(12, 0.5, 2.0)[0] == 0
+    abs(keys(12, 0.5, 2.0)[-1]) < 0.001
+    np.abs(keys(12, 0.5, 2.0)[-RATE // 2:]).max() < 0.5 * np.abs(keys(12, 0.5, 2.0)).max()
 
-##Events
+##Patterns
 
-An event is a moment and a sound: when, which voice, which step of the
-scale, how loud. A timeline of events is what a video hands over.
+A pattern is a figure -- a short list of notes -- played one note per
+pulse, over and over, between two moments. Its loudness can be a number,
+or a rule giving the loudness at each moment, which is how a line fades
+in and out. Each note is left to ring for a set time, longer than the
+pulse, so the notes overlap the way they do with a piano's pedal down.
 
-    def sound_of(event: tuple):
-        _, voice, step, gain = event
-        return VOICES[voice](pitch(step), gain)
+A sounded note is a moment, a pitch, a loudness and a length.
 
-Every sound must finish inside the video it belongs to.
+    def pattern(start: float, end: float, pulse: float, gain, figure: list, ring: float) -> list:
+        notes = []
+        for k in range(int((end - start) / pulse + 1e-9)):
+            time = start + k * pulse
+            loud = gain(time) if callable(gain) else gain
+            notes.append((time, figure[k % len(figure)], loud, ring))
+        return notes
 
-    def fits(events: list, duration: float) -> bool:
-        return all(time >= 0 and time + len(sound_of((time, voice, step, gain))) / RATE <= duration
-                   for time, voice, step, gain in events)
+Three pulses of a two-note figure sound the first note, the second, and
+the first again; a rule for loudness is followed pulse by pulse.
 
 ~example
-    fits([(0.0, "marimba", 5, 0.5)], 1.0)
-    not fits([(0.5, "marimba", 5, 0.5)], 1.0)
+    [n[1] for n in pattern(0.0, 0.6, 0.2, 0.2, [0, 7], 1.0)] == [0, 7, 0]
+    [n[2] for n in pattern(0.0, 2.0, 1.0, lambda t: t / 10, [0], 1.0)] == [0.0, 0.1]
+
+The rule is nearly always a fade, and a fade is built from a ramp:
+nothing before one moment, everything after another, and rising evenly
+between the two. A line fades in by following a ramp, and fades out by
+following what is left when a ramp is taken from one.
+
+    def ramp(time: float, start: float, end: float) -> float:
+        return min(1.0, max(0.0, (time - start) / (end - start)))
+
+~example
+    ramp(0.0, 1.0, 3.0) == 0.0
+    ramp(2.0, 1.0, 3.0) == 0.5
+    ramp(9.0, 1.0, 3.0) == 1.0
+
+Under the patterns, a low note or a chord: every pitch struck together
+and left to ring for the same length.
+
+    def held(start: float, length: float, pitches: list, gain: float) -> list:
+        return [(start, p, gain, length) for p in pitches]
 
 ##Mixing
 
-The mix adds each sound in at its moment. Sounds that overlap add up,
-so the result is scaled down whenever its loudest point would pass a
-ceiling set below full scale -- the mix cannot clip, whatever it is
-given.
+Every note must finish inside the video it belongs to.
+
+    def fits(notes: list, duration: float) -> bool:
+        return all(time >= 0 and time + length <= duration + 1e-9
+                   for time, _, _, length in notes)
+
+~example
+    fits([(0.0, 12, 0.5, 1.0)], 1.0)
+    not fits([(0.5, 12, 0.5, 1.0)], 1.0)
+
+A note left to ring past the end is cut to fit: trimming a list of notes
+to a duration shortens any that would run over and drops any that would
+start too late to be heard.
+
+    def trimmed(notes: list, duration: float) -> list:
+        return [(time, semitones, gain, min(length, duration - time))
+                for time, semitones, gain, length in notes if duration - time > 0.05]
+
+~example
+    trimmed([(0.5, 12, 0.5, 1.0), (0.99, 12, 0.5, 1.0)], 1.0) == [(0.5, 12, 0.5, 0.5)]
+
+The mix adds each note in at its moment. Notes that overlap add up. A
+quiet score is left as quiet as it was written; only if its loudest
+point would pass a ceiling set below full scale is the whole mix scaled
+down, so it cannot clip, whatever it is given.
 
     CEILING = 0.8
 
-    def mix(events: list, duration: float):
+    def mix(notes: list, duration: float):
         out = np.zeros(int(RATE * duration))
-        for event in events:
-            sound = sound_of(event)
-            start = int(event[0] * RATE)
+        for time, semitones, gain, length in notes:
+            sound = keys(semitones, gain, length)
+            start = int(time * RATE)
             end = min(len(out), start + len(sound))
             if 0 <= start < end:
                 out[start:end] += sound[:end - start]
         peak = np.abs(out).max() if len(out) else 0.0
         return out * (CEILING / peak) if peak > CEILING else out
 
+Synthesising a few seconds of sound takes longer than the fraction of a
+second a property is usually allowed per case, so this one is given no
+time limit; what it checks is loudness, not speed.
+
 ~property mix-never-clips
-    @given(events=st.lists(st.tuples(
+    @settings(deadline=None)
+    @given(notes=st.lists(st.tuples(
         st.floats(min_value=0, max_value=3),
-        st.sampled_from(["marimba", "woodblock", "knock"]),
-        st.integers(min_value=0, max_value=20),
+        st.integers(min_value=-12, max_value=36),
         st.floats(min_value=0, max_value=1),
-    ), max_size=30))
-    def _(events):
-        mixed = mix(events, 3.0)
+        st.floats(min_value=0.05, max_value=1.5),
+    ), max_size=12))
+    def _(notes):
+        mixed = mix(notes, 3.0)
         assert len(mixed) == int(RATE * 3.0)
         assert np.abs(mixed).max() <= CEILING + 1e-9
 

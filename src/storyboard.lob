@@ -20,7 +20,7 @@ one module to everything around it.
 
     BEATS = [
         Beat("heritage", 6.0, "Literate programming"),
-        Beat("one-file", 5.0, "Prose and code, one context window"),
+        Beat("one-file", 5.0, "Prose and code in one context window"),
         Beat("claims-run", 4.5, "Every claim, checked"),
         Beat("split", 4.0, "Code that means what it says"),
         Beat("context", 4.2, "Less context, more meaning"),
@@ -57,10 +57,10 @@ autoplays without the viewer choosing to keep watching.
 
 ##Captions
 
-A caption is at most six words, and every beat is named once, so a
+A caption is at most seven words, and every beat is named once, so a
 scene can be found for each.
 
-    CAPTION_WORDS = 6
+    CAPTION_WORDS = 7
 
     def beat(name: str) -> Beat:
         return next(b for b in BEATS if b.name == name)

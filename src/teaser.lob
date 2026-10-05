@@ -636,146 +636,165 @@ The whole project, still, for checking the layout at a glance.
 
 ##Sounds
 
-What is heard, and when. The voices and the mixing come from #Sound;
-this section says which sound goes with which moment. Each beat's
-sounds are written from the same timing function its pictures use, so
-a sound cannot drift from the thing it accompanies -- move a beat's
-timing and its sounds move with it.
+What is heard, and when. The voice, the patterns and the mixing come
+from #Sound; this section is the score, and it is a short one.
 
-Ticks, and anything else that arrives one after another, are drawn with
-a staggered start. The moment each one begins follows from how many
-there are, how far they overlap and how long the whole takes.
+The music takes one thing from the storyboard: its length. It does not
+follow the beats. An earlier score gave every beat a harmony of its own
+and began the figure again at each join, and every join could be heard.
+This one keeps a single pulse from its first note to its last, about
+three notes a second, and counts its time in bars of twelve pulses.
 
-    def lagged_starts(count: int, lag_ratio: float, run_time: float) -> list:
-        if count == 0:
-            return []
-        each = run_time / (1 + (count - 1) * lag_ratio)
-        return [i * lag_ratio * each for i in range(count)]
+    PULSE = 0.3
+    BAR_PULSES = 12
+    BAR = BAR_PULSES * PULSE
+    NOTE_RING = 1.2
 
-~example
-    lagged_starts(3, 0.5, 2.0) == [0.0, 0.5, 1.0]
-    lagged_starts(0, 0.5, 2.0) == []
+    def bar_starts(duration: float) -> list:
+        return [k * BAR for k in range(int(duration / BAR + 1e-9))]
 
-Three numbers come from the real material and decide how many sounds
-there are: the ticks in the claims excerpt, the ticks in the split's
-example, and the names that lift off the opening listing.
-
-    def result_count(results: dict, first: int, last: int) -> int:
-        return len([line for line in results if first < line <= last])
-
-    def sound_counts() -> dict:
-        results = claim_results(STAR_PROJECT, "petri/marking.lob")
-        rows = typeset_listing(STAR_MODULE, *OPENING)[1]
-        return {
-            "claims": result_count(results, *CLAIMS_EXCERPT),
-            "split": result_count(results, *SPLIT_EXAMPLE),
-            "lifted": len(liftable(STAR_GRAPH, STAR_LAYOUT, rows)),
-        }
-
-Heritage: a low note as the quotation appears, a knock where the cut is
-struck, two rising notes as the lines close over it.
-
-    def heritage_sounds(duration: float, counts: dict) -> list:
-        appear, read, mark, shut, _ = heritage_times(duration)
-        cut = appear + read
-        return [(0.0, "marimba", 0, 0.5), (cut, "knock", 0, 0.5),
-                (cut + mark, "marimba", 3, 0.4), (cut + mark + shut / 2, "marimba", 5, 0.45)]
-
-One file: a note as the listing appears, a brighter one for the
-cross-reference, and three rising notes for the three sides of the
-context window's frame.
-
-    def one_file_sounds(duration: float, counts: dict) -> list:
-        appear, read, point, enclose, _ = one_file_times(duration)
-        frame = appear + read + point
-        return [(0.0, "marimba", 7, 0.4), (appear + read, "marimba", 12, 0.45),
-                *[(frame + k * enclose / 3, "marimba", step, 0.35)
-                  for k, step in enumerate((5, 7, 8))]]
-
-Claims run: a woodblock for every tick, climbing the scale.
-
-    def claims_run_sounds(duration: float, counts: dict) -> list:
-        appear, land, _ = claims_run_times(duration)
-        return [(0.0, "marimba", 5, 0.35),
-                *[(appear + start, "woodblock", 10 + i % 10, 0.4)
-                  for i, start in enumerate(lagged_starts(counts["claims"], 0.6, land))]]
-
-The split: one note as the chomper sets off, one at the door, then two
-together as it arrives as two -- and the ticks.
-
-    def split_sounds(duration: float, counts: dict) -> list:
-        appear, walk, split, land, _ = split_times(duration)
-        arrive = appear + walk + split
-        return [(appear, "marimba", 5, 0.4), (appear + walk, "marimba", 8, 0.45),
-                (arrive - split * 0.1, "marimba", 10, 0.4), (arrive - split * 0.1, "marimba", 12, 0.4),
-                *[(arrive + start, "woodblock", 12 + i, 0.4)
-                  for i, start in enumerate(lagged_starts(counts["split"], 0.5, land))]]
-
-Context: the comparison is made audible. The search bar grows to a long
-roll of rising notes; the query bar gets two.
-
-    ROLL_STEP = 0.1
-
-    def context_sounds(duration: float, counts: dict) -> list:
-        appear, grow_search, _, _ = context_times(duration)
-        roll = [(appear + i * ROLL_STEP, "marimba", 3 + i, 0.18 + 0.01 * i)
-                for i in range(int(grow_search / ROLL_STEP))]
-        asked = appear + grow_search
-        return [(0.0, "marimba", 5, 0.35), *roll,
-                (asked, "marimba", 10, 0.45), (asked + 0.15, "marimba", 12, 0.45)]
-
-The graph: a pluck for each name that lifts, a chord when the query
-lights its nodes, a note for the cross-reference, a falling run as the
-view pulls back, and a low octave on the end card.
-
-    def graph_sounds(duration: float, counts: dict) -> list:
-        show, lift, query, refer, pull, _ = graph_times(duration)
-        lifted = max(counts["lifted"], 1)
-        lit = show + lift + query * 0.25
-        edge = show + lift + query
-        back = edge + refer
-        return [(0.0, "marimba", 5, 0.35),
-                *[(show + lift * 0.2 + i * lift * 0.5 / lifted, "marimba", 7 + i, 0.35)
-                  for i in range(counts["lifted"])],
-                *[(lit, "marimba", step, 0.3) for step in (5, 7, 8, 10)],
-                (edge, "marimba", 12, 0.45),
-                *[(back + i * pull * 0.75 / 5, "marimba", 14 - 2 * i, 0.3) for i in range(5)],
-                (back + pull, "marimba", 0, 0.5), (back + pull, "marimba", 5, 0.5)]
-
-Every beat has its sounds, and they are placed on the storyboard's
-timeline.
-
-    BEAT_SOUNDS = {
-        "heritage": heritage_sounds,
-        "one-file": one_file_sounds,
-        "claims-run": claims_run_sounds,
-        "split": split_sounds,
-        "context": context_sounds,
-        "graph": graph_sounds,
-    }
-
-    def teaser_sounds(counts: dict) -> list:
-        return sorted((start + time, voice, step, gain)
-                      for start, played in timeline(BEATS)
-                      for time, voice, step, gain in BEAT_SOUNDS[played.name](played.duration, counts))
+Eight whole bars fit in the teaser, with a little over a second left
+after the last of them.
 
 ~example
-    [b.name for b in BEATS] == list(BEAT_SOUNDS)
+    len(bar_starts(LIMIT)) == 8
+    1.0 < LIMIT - (bar_starts(LIMIT)[-1] + BAR) < 1.5
+
+Pitches are semitones above a low A. The first line rocks back and
+forth between A and the C above it, one note to a pulse, all the way
+through. Under it a low note is struck at the start of a bar and left
+to ring into the next, with the same note an octave up struck softly
+beside it, so the low line can still be followed on small speakers.
+
+That low note is all the harmony there is. It alternates, bar by bar,
+between A and the F below it: over A what is above it makes A minor,
+over F the same notes make F major. No note of any line has to change
+when it moves, so whatever is still ringing from the bar before still
+belongs.
+
+    HOME, AWAY = 0, -4
+    ROCK = [12, 15]
+
+For the middle of the piece a second line turns above the first, an
+octave up. It is not a second rocking: two notes going back and forth
+above two more is how a siren sounds. It is an arpeggio through a stack
+of thirds -- A, C, E, and at its widest the G above them -- and a
+different one in each of its four bars: three notes rising; four, up and
+back; six, up to the G and back; and the four again. Its notes are left
+ringing for longer than the first line's, so that what is heard is less
+a tune than a chord hanging in the air, its notes touched in turn.
+
+    ARPEGGIOS = [[24, 27, 31], [24, 27, 31, 27], [24, 27, 31, 34, 31, 27], [24, 27, 31, 27]]
+    HALO = 2.0
+
+Three, four and six all divide the twelve pulses of a bar, so every
+arpeggio comes round a whole number of times -- four times, three
+times, twice -- and each bar begins its own from the bottom. The teaser
+has exactly as many middle bars as there are arpeggios.
+
+~example
+    all(BAR_PULSES % len(arpeggio) == 0 for arpeggio in ARPEGGIOS)
+    len(bar_starts(LIMIT)[3:-1]) == len(ARPEGGIOS)
+
+All of it is quiet. A low note is the loudest thing there is, the first
+line a little under it, and the second line much softer, being higher.
+
+    LOW = 0.10
+    OCTAVE = 0.04
+    FIGURE = 0.09
+    ABOVE = 0.035
+
+The shape is a slow arrival and a slow leaving. The music starts from
+almost nothing and takes two bars to reach its full, quiet level.
+
+    QUIET = 0.12
+
+    def arriving(time: float) -> float:
+        return QUIET + (1 - QUIET) * ramp(time, 0.0, 2 * BAR)
+
+~example
+    arriving(0.0) == QUIET
+    abs(arriving(2 * BAR) - 1.0) < 1e-9
+
+The low notes begin with the second bar, the first of them at whatever
+level the arrival has reached, so the first line is heard alone before
+anything is put under it. They are counted from the end: the last bar's
+is home, the one before it away, and so on back.
+
+    def low_notes(bars: list) -> list:
+        notes = []
+        for k, start in enumerate(bars[1:], 1):
+            root = HOME if (len(bars) - 1 - k) % 2 == 0 else AWAY
+            notes += held(start, 1.25 * BAR, [root], LOW * arriving(start))
+            notes += held(start, 1.25 * BAR, [root + 12], OCTAVE * arriving(start))
+        return notes
+
+In the teaser that makes seven low notes, beginning and ending at home.
+
+~example
+    [pitch for _, pitch, _, _ in low_notes(bar_starts(LIMIT))][::2] == [HOME, AWAY, HOME, AWAY, HOME, AWAY, HOME]
+
+The first line plays from the first pulse to the end of the last bar,
+arriving as everything does and fading to nothing over the last bar. The
+second line fades in over the fourth bar and has faded out again by the
+start of the last, and while it is there the first line draws back by
+about a third to leave it room. No chord ends the piece. The last low
+note rings, the rocking thins out above it, and the music is over
+before the picture is.
+
+    RECEDE = 0.35
+
+    def teaser_notes(duration: float) -> list:
+        bars = bar_starts(duration)
+        last = bars[-1]
+        enter, leave = bars[3], bars[-2]
+
+        def middle(time):
+            return ramp(time, enter - PULSE, enter + BAR) * (1 - ramp(time, leave, last))
+
+        def first(time):
+            return (FIGURE * arriving(time) * (1 - ramp(time, last, last + BAR))
+                    * (1 - RECEDE * middle(time)))
+
+        def second(time):
+            return ABOVE * middle(time)
+
+        above = [note for start, arpeggio in zip(bars[3:-1], ARPEGGIOS)
+                 for note in pattern(start, start + BAR, PULSE, second, arpeggio, HALO)]
+        notes = pattern(0.0, last + BAR, PULSE, first, ROCK, NOTE_RING) + above + low_notes(bars)
+        return trimmed(sorted(notes), duration)
+
+Two measurements of a score make those promises checkable: the pulses
+on which anything is struck, and the most that is struck at once.
+
+    def struck_pulses(notes: list) -> list:
+        return sorted({round(time / PULSE) for time, _, _, _ in notes})
+
+    def loudest_strike(notes: list) -> float:
+        return max(sum(gain for time, _, gain, _ in notes if round(time / PULSE) == pulse)
+                   for pulse in struck_pulses(notes))
+
+Something is struck on every pulse of the eight bars, and nothing off
+the pulse. The first note and the last are faint. Nothing struck at one
+moment is more than a low note, its octave and a note of each line, and
+the last sound has died away before the teaser ends.
+
+~example
+    struck_pulses(teaser_notes(LIMIT)) == list(range(8 * BAR_PULSES))
+    all(abs(time / PULSE - round(time / PULSE)) < 1e-6 for time, _, _, _ in teaser_notes(LIMIT))
+    teaser_notes(LIMIT)[0][2] < FIGURE / 5 and teaser_notes(LIMIT)[-1][2] < FIGURE / 5
+    loudest_strike(teaser_notes(LIMIT)) <= LOW + OCTAVE + FIGURE + ABOVE + 1e-9
+    max(time + length for time, _, _, length in teaser_notes(LIMIT)) < LIMIT
 
 The track is mixed to the storyboard's length and written beside the
-other rendered output.
+other rendered output. A switch turns it off, for a silent render.
 
-For now the teaser is rendered silent. The first track, pitched notes on
-a pentatonic scale, sounded like a children's programme against pictures
-that are not one. The events and their timing are kept, since a quieter,
-less melodic set of voices could reuse them; only the switch is off.
-
-    SOUND_ON = False
+    SOUND_ON = True
     SOUND_FILE = Path("../media/sound/teaser.wav")
 
     def teaser_track() -> Path:
         length = sum(played.duration for played in BEATS)
-        return write_wav(mix(teaser_sounds(sound_counts()), length), SOUND_FILE)
+        return write_wav(mix(teaser_notes(length), length), SOUND_FILE)
 
 ##The Whole Teaser
 
@@ -864,13 +883,14 @@ the opening listing defines enough of the module's names to lift off.
     STAR_GRAPH["edges"][hero_edge(STAR_GRAPH)]["kind"] == "REFERENCES"
     len(liftable(STAR_GRAPH, STAR_LAYOUT, typeset_listing(STAR_MODULE, *OPENING)[1])) >= 5
 
-##every sound is heard in full
+##every note is heard in full
 
-With the real numbers of ticks and names, every sound starts after the
-teaser begins and has finished before it ends.
+At the storyboard's real length, every note starts after the teaser
+begins and has finished before it ends, and the mix is quiet enough to
+be left exactly as the score wrote it.
 
-    fits(teaser_sounds(sound_counts()), LIMIT)
-    sound_counts()["claims"] > 0 and sound_counts()["split"] > 0 and sound_counts()["lifted"] > 0
+    fits(teaser_notes(sum(b.duration for b in BEATS)), sum(b.duration for b in BEATS))
+    np.abs(mix(teaser_notes(sum(b.duration for b in BEATS)), sum(b.duration for b in BEATS))).max() < CEILING
 
 ##the query's answer is in the star module's flower
 

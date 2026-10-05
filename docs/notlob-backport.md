@@ -15,7 +15,7 @@ Summary:
 
 | # | Feature | Proposed interface | Size | Priority |
 |---|---------|--------------------|------|----------|
-| 1 | Claim results as data | `notlob test --format json` | small | high |
+| 1 | Claim results as data | `notlob test --json`, with the shape below | small | high |
 | 2 | Token spans | `notlob tokens <file>` (or a library function) | small | high |
 | 3 | Graph picture | `notlob graph --format svg` | medium | optional |
 | 4 | Project directory option | `--project DIR` on commands | small | medium |
@@ -42,10 +42,11 @@ margin, a CI summary, an agent deciding what to fix) has the same need.
 ### Proposed interface
 
 ```
-notlob test [file] --format json
+notlob test [file] --json
 ```
 
-One JSON document on stdout:
+The `--json` flag already exists in notlob. What is proposed here is the
+shape of what it prints: one JSON document on stdout, and nothing else:
 
 ```json
 {
