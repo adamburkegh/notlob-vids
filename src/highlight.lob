@@ -178,8 +178,8 @@ replaces the flat code and claim spans with the syntax beneath them.
             result += syntax_spans([lines[i] for i in block], block, language)
         return sorted(result, key=lambda s: (s.line, s.start))
 
-Once code is syntax-coloured, claim lines no longer show by colour; they
-are remembered separately, to be marked in the margin.
+Syntax colouring leaves a claim line looking like any other code, so
+the claim lines are recorded separately, to be marked in the margin.
 
     def claim_lines(source: str) -> set:
         return {s.line for s in spans(source) if s.kind == "claim"}
@@ -193,11 +193,12 @@ Everything either layer can say must have a style.
 Documents are generated from the constructs that matter on screen --
 prose, prose with a cross-reference, subheadings, code, claims -- and
 every one of them must tile, both as notlob sees it and with syntax.
-In this project's harness, the first draw occasionally stalls for a
-second or so -- a one-off cost of the heavy imports around it, seen
-with the machine awake as well as after a sleep -- which Hypothesis
-reports as a slow strategy. Only that timing check is relaxed; every
-generated document is still checked.
+In this project's harness the first draw can stall for a second or so,
+which Hypothesis reports as a slow strategy. The stall is not the
+machine waking from sleep: it happens on a machine that has been awake
+throughout. Its likely cause is the heavy imports around the property.
+Only that timing check is relaxed; every generated document is still
+checked.
 
 ~property spans-tile-source
     @settings(suppress_health_check=[HealthCheck.too_slow])

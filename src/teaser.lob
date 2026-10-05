@@ -7,10 +7,10 @@ the name-graph of the whole project around it.
 
 The scenes here are drawing only. What is shown comes from the other
 modules: colours and frame from #Style, source listings from
-#Highlight, where every name sits from #Graph, and the real results and
-measurements from #Evidence. This module is where the beats of the
-storyboard are built; for now it holds the stills and the first moving
-beat, each a checkpoint before the beats are joined.
+#Highlight, where every name sits from #Graph, the game board from
+#Board, and the real results and measurements from #Evidence. This
+module is where the beats of #Storyboard are drawn and joined, and where
+the score that #Sound plays is written.
 
 ##Heritage
 
@@ -640,10 +640,10 @@ What is heard, and when. The voice, the patterns and the mixing come
 from #Sound; this section is the score, and it is a short one.
 
 The music takes one thing from the storyboard: its length. It does not
-follow the beats. An earlier score gave every beat a harmony of its own
-and began the figure again at each join, and every join could be heard.
-This one keeps a single pulse from its first note to its last, about
-three notes a second, and counts its time in bars of twelve pulses.
+follow the beats, because music that changes with each beat has a join
+at each one, and a join can be heard. It keeps a single pulse from its
+first note to its last, about three notes a second, and counts its time
+in bars of twelve pulses.
 
     PULSE = 0.3
     BAR_PULSES = 12
