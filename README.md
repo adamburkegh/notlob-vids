@@ -8,7 +8,7 @@ Needs Python 3.12, Node, and `notlob` on PATH. Text is set in Georgia and Consol
 
 ```
 git clone https://github.com/adamburkegh/notlob ref-projects/notlob
-git clone --branch v0.8.0 https://github.com/adamburkegh/pn-chomper ref-projects/pn-chomper
+git clone --branch v0.8.1 https://github.com/adamburkegh/pn-chomper ref-projects/pn-chomper
 python -m venv nvids
 ./run.sh env
 ./run.sh test

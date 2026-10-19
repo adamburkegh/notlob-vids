@@ -88,7 +88,7 @@ prose that says what they establish -- are the second still.
 
     class ClaimsPreview(Scene):
         def construct(self):
-            self.add(listing(STAR_MODULE, 98, 148))
+            self.add(listing(STAR_MODULE, 126, 176))
 
 ##One File
 
@@ -118,6 +118,11 @@ to show the file running on.
 The frame is three sides of a rectangle around the listing, with the
 ellipsis where the fourth would be, and its labels along the top edge:
 what it is on the left, the file and its measured size on the right.
+The labels are set at one size, but the frame is as wide as the listing
+it holds, so if together they would not fit with a gap between them,
+both are shrunk by the same amount until they do.
+
+    LABEL_CLEARANCE = 0.3
 
     def context_frame(body, path: Path, project: Path) -> tuple:
         pad = 0.16
@@ -129,11 +134,21 @@ what it is on the left, the file and its measured size on the right.
         more = VGroup(*[Dot(radius=0.03, color=PROSE) for _ in range(3)]).arrange(RIGHT, buff=0.1)
         more.move_to([(left + right) / 2, bottom, 0])
         name = sized_text("context window", CODE_FONT, PROSE, 0.12)
-        name.move_to([left, top + 0.12, 0], aligned_edge=DL)
         size = sized_text(f"{path.relative_to(project).as_posix()}  ·  {file_context(path):,} characters",
                           CODE_FONT, STRUCTURE, 0.12)
+        room = right - left - LABEL_CLEARANCE
+        if name.width + size.width > room:
+            shrink = room / (name.width + size.width)
+            name.scale(shrink)
+            size.scale(shrink)
+        name.move_to([left, top + 0.12, 0], aligned_edge=DL)
         size.move_to([right, top + 0.12, 0], aligned_edge=DR)
         return frame, VGroup(more, name, size)
+
+However narrow the listing, the two labels keep their gap.
+
+~example
+    context_frame(Rectangle(width=1, height=1), STAR_MODULE, STAR_PROJECT)[1][1].get_right()[0] + LABEL_CLEARANCE <= context_frame(Rectangle(width=1, height=1), STAR_MODULE, STAR_PROJECT)[1][2].get_left()[0] + 1e-6
 
 The cross-reference is found in the listing by its text, and the glyphs
 that spell it are the ones that pulse.
@@ -167,7 +182,7 @@ property at its sigil, exactly where notlob puts them. The ticks are not
 drawn because the claims ought to pass; they are drawn because, run
 moments before the render, they did.
 
-    CLAIMS_EXCERPT = (105, 148)
+    CLAIMS_EXCERPT = (133, 176)
 
 A tick is two strokes, sized to the capitals of the code beside it.
 
@@ -241,7 +256,7 @@ walking through a doorway and becoming two. Above, the example; below,
 the net it is about, drawn the way pn-chomper draws it; and the net,
 both markings and the ticks all come from running pn-chomper's code.
 
-    SPLIT_EXAMPLE = (142, 148)
+    SPLIT_EXAMPLE = (170, 176)
 
 The marking before firing places the chompers; the transition fired is
 the one leading out of the room the chompers leave.
@@ -422,7 +437,7 @@ an edge heading out of view, and then the view pulls back to show where
 it goes -- and everything else the module is part of.
 
     STAR_CLUSTER = "petri/marking"
-    OPENING = (0, 41)
+    OPENING = (0, 43)
 
 The edge the story follows is the one the listing shows as a
 cross-reference in the module's opening essay.

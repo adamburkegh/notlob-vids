@@ -122,10 +122,8 @@ the result is run with pn-chomper's own TypeScript runner.
     @cache
     def split_states(project: Path, module: str) -> dict:
         out = (WORK / project.name).resolve()
-        # check=False: pn-chomper's on-build hook expects a whole-game build and
-        # warns on a single module; the module itself is still built.
         subprocess.run(["notlob", "build", "--skip-tests", "--output", str(out), module],
-                       cwd=project, capture_output=True, text=True, check=False)
+                       cwd=project, capture_output=True, text=True, check=True)
         built = out / (module.removesuffix(".lob").replace("/", "_") + ".ts")
         script = out / "split_dump.ts"
         script.write_text(built.read_text(encoding="utf-8") + DUMP, encoding="utf-8")

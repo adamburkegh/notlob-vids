@@ -12,6 +12,9 @@
   at once, and that the music ends before the picture does.
 - **Teaser**: the second beat's caption now reads "Prose and code in one
   context window", and captions may run to seven words.
+- **pn-chomper 0.8.1**: the star module is now taken from pn-chomper
+  0.8.1, where chompers, ghosts and dots are all markings; the listings
+  follow Petri Marking's new line numbers.
 
 ## 0.4.0 - 2026-10-03
 
