@@ -7,7 +7,7 @@
 #
 [project]
 name = "notlob-vids"
-version = "0.4.1"
+version = "0.5.0"
 requires-python = ">=3.12"
 
 [dependency-groups]

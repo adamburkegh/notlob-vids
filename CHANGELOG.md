@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-11-06
+
+Built and tested against notlob 0.6.0 and pn-chomper 0.8.1. It needs
+notlob 0.6.0: the graph, test results and parse tree it reads take
+their present shape in that release.
 
 - **Sound**: the teaser now has music. It is synthesised when the video
   is rendered, from a score in `src/teaser.lob`: a two-note rocking line
@@ -15,9 +19,10 @@
 - **pn-chomper 0.8.1**: the star module is now taken from pn-chomper
   0.8.1, where chompers, ghosts and dots are all markings; the listings
   follow Petri Marking's new line numbers.
-- **notlob 0.6**: claim results are read from `notlob test --format
+- **notlob 0.6.0**: claim results are read from `notlob test --format
   json` instead of its text output, and everything notlob prints is read
-  as UTF-8. The name graph is read at `--level index`, the level that
+  as UTF-8. Listings are coloured from notlob 0.6.0's parse tree, which
+  holds every character of the source, and look as they did. The name graph is read at `--level index`, the level that
   holds the project's names and cross-references, so the graph beat
   draws every name, lights everything the query holds, and names the
   command behind its count. Every node kind notlob can give is coloured
