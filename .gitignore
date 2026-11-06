@@ -6,6 +6,9 @@ notlob-docs/
 media/
 work/
 
+# scratch output from investigations
+var/
+
 # environment
 nvids/
 .venv/
