@@ -15,23 +15,25 @@ The star of the teaser is one module of that project.
 
 ##Claim Results
 
-notlob reports each claim it runs as a line beginning with its status
-and the source position of the assertion -- one line per assertion for
-examples and tests, one per property at its sigil. The status by source
-line is exactly what is needed to put a tick beside the line on screen.
+Asked for JSON, notlob reports a run as one document with an entry for
+each claim assertion: its status, its file relative to the project root,
+and its 1-based line -- the assertion's own line for examples and tests,
+the sigil's for a property. The status by source line, for the module
+on screen, is exactly what is needed to put a tick beside the line.
 
-    RESULT_LINE = re.compile(r"^(PASS|FAIL|ERROR)\s+\S+?:(\d+)\s")
+    def results_by_line(document: dict, module: str) -> dict:
+        return {claim["line"]: claim["status"] for claim in document["claims"]
+                if claim.get("file") == module and "line" in claim}
 
-    def parse_results(output: str) -> dict:
-        results = {}
-        for line in output.splitlines():
-            match = RESULT_LINE.match(line)
-            if match:
-                results[int(match.group(2))] = match.group(1)
-        return results
+Claims from another file, and claims with no known line, are left out.
 
 ~example
-    parse_results("PASS   marking.lob:136  x\nnoise\nFAIL   marking.lob:9  y") == {136: "PASS", 9: "FAIL"}
+    results_by_line({"claims": [
+        {"status": "PASS", "file": "petri/marking.lob", "line": 136},
+        {"status": "FAIL", "file": "petri/marking.lob", "line": 9},
+        {"status": "PASS", "file": "petri/net.lob", "line": 4},
+        {"status": "PASS", "file": "petri/marking.lob"},
+    ]}, "petri/marking.lob") == {136: "PASS", 9: "FAIL"}
 
 The claims are run in the project itself, with its own toolchain, the
 way its author runs them.
@@ -39,9 +41,9 @@ way its author runs them.
     @cache
     def claim_results(project: Path, module: str) -> dict:
         # check=False: a failing claim is a result to show, not an error here.
-        result = subprocess.run(["notlob", "test", module], cwd=project,
-                                capture_output=True, text=True, check=False)
-        return parse_results(result.stdout)
+        result = subprocess.run(["notlob", "test", "--format", "json", module], cwd=project,
+                                capture_output=True, encoding="utf-8", check=False)
+        return results_by_line(json.loads(result.stdout), module)
 
 ##Context
 
@@ -97,7 +99,7 @@ The notlob approach costs what the query returns.
 
     def query_context(project: Path, address: str) -> int:
         result = subprocess.run(["notlob", "query", "content", address], cwd=project,
-                                capture_output=True, text=True, check=True)
+                                capture_output=True, encoding="utf-8", check=True)
         return len(result.stdout)
 
 ##The Split
@@ -123,7 +125,7 @@ the result is run with pn-chomper's own TypeScript runner.
     def split_states(project: Path, module: str) -> dict:
         out = (WORK / project.name).resolve()
         subprocess.run(["notlob", "build", "--skip-tests", "--output", str(out), module],
-                       cwd=project, capture_output=True, text=True, check=True)
+                       cwd=project, capture_output=True, encoding="utf-8", check=True)
         built = out / (module.removesuffix(".lob").replace("/", "_") + ".ts")
         script = out / "split_dump.ts"
         script.write_text(built.read_text(encoding="utf-8") + DUMP, encoding="utf-8")

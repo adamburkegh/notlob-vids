@@ -15,6 +15,14 @@
 - **pn-chomper 0.8.1**: the star module is now taken from pn-chomper
   0.8.1, where chompers, ghosts and dots are all markings; the listings
   follow Petri Marking's new line numbers.
+- **notlob 0.6**: claim results are read from `notlob test --format
+  json` instead of its text output, and everything notlob prints is read
+  as UTF-8. The name graph is read at `--level index`, the level that
+  holds the project's names and cross-references, so the graph beat
+  draws every name, lights everything the query holds, and names the
+  command behind its count. Every node kind notlob can give is coloured
+  as its text is in a listing. The cross-reference the graph beat
+  follows leaves from the star module itself, where notlob starts it.
 
 ## 0.4.0 - 2026-10-03
 

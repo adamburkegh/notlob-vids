@@ -8,10 +8,11 @@ so every promise the layout makes can be checked without rendering.
 
 The layout has two levels, matching the two kinds of structure in the
 graph. Inside a module, the graph is a tree: a module contains its
-subheadings, and a module or subheading defines its symbols and claims.
-Between modules it is a web of imports, uses and cross-references. So
-each module is drawn as a small flower around its own node, and the
-flowers are arranged by how the modules depend on one another.
+subheadings, and a module or subheading the claims and symbols written
+in it. Between modules it is a web of imports, uses and
+cross-references. So each module is drawn as a small flower around its
+own node, and the flowers are arranged by how the modules depend on one
+another.
 
     SPACING = 1.0
     GAP = 1.5
@@ -25,12 +26,13 @@ flowers are arranged by how the modules depend on one another.
 ##Loading
 
 The graph is asked of notlob, in the project's own directory, rather
-than reconstructed from files.
+than reconstructed from files. It is asked for the index level, the
+first to hold the cross-references.
 
     def load_graph(project_dir: Path) -> dict:
         result = subprocess.run(
-            ["notlob", "graph", "--format", "json"],
-            cwd=project_dir, capture_output=True, text=True, check=True,
+            ["notlob", "graph", "--format", "json", "--level", "index"],
+            cwd=project_dir, capture_output=True, encoding="utf-8", check=True,
         )
         return json.loads(result.stdout)
 
@@ -44,11 +46,11 @@ way notlob names every module.
 ##Clusters
 
 Every node belongs to the cluster of the module above it in the tree.
-Tree edges are the structural ones -- contains, defines, and the
-binding's use of its external files -- so the binding gathers its
-externals the way a module gathers its symbols.
+Tree edges are the structural ones -- contains, directly or through
+what the level hides, and the binding's use of its external files -- so
+the binding gathers its externals the way a module gathers its symbols.
 
-    TREE_EDGES = ("CONTAINS", "DEFINES", "USES_EXTERNAL")
+    TREE_EDGES = ("CONTAINS", "CONTAINS_INDIRECTLY", "USES_EXTERNAL")
 
     def tree_parents(graph: dict) -> dict:
         return {e["target"]: e["source"] for e in graph["edges"] if e["kind"] in TREE_EDGES}
@@ -294,10 +296,19 @@ the binding outermost, and the same picture every time.
 ~test externals_join_the_binding
     PN_LAYOUT.cluster_of["index.html.tmpl"] == "pn/chomper"
 
+##names keep their characters
+
+A heading may hold any character, and the graph brings it across as
+written: the em dash in one of pn-chomper's test groups arrives as
+itself.
+
+    any("—" in n["address"] for n in PN_GRAPH["nodes"])
+
 #Appendix Fixtures
 
-Synthetic graphs in the shape notlob produces: modules with symbols,
-some under subheadings, and imports between modules.
+Synthetic graphs in the shape notlob produces at the index level:
+modules with symbols, some under subheadings, and imports between
+modules. A symbol is held through the code block the level hides.
 
     def synthetic_graph(sizes: list, imports: list) -> dict:
         nodes, edges = [], []
@@ -312,7 +323,8 @@ some under subheadings, and imports between modules.
             for k in range(size):
                 leaf = f"{module}#s{k}"
                 nodes.append({"address": leaf, "kind": "SYMBOL", "start_line": 10 + k})
-                edges.append({"source": owners[k % len(owners)], "target": leaf, "kind": "DEFINES"})
+                edges.append({"source": owners[k % len(owners)], "target": leaf,
+                              "kind": "CONTAINS_INDIRECTLY"})
         for a, b in imports:
             edges.append({"source": f"m{a}", "target": f"m{b}", "kind": "IMPORTS"})
         return {"nodes": nodes, "edges": edges}

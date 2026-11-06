@@ -440,32 +440,40 @@ it goes -- and everything else the module is part of.
     OPENING = (0, 43)
 
 The edge the story follows is the one the listing shows as a
-cross-reference in the module's opening essay.
+cross-reference in the module's opening essay. A reference starts at
+the nearest node an outline shows, which for the opening essay is the
+module itself.
 
     def hero_edge(graph: dict) -> int:
         return next(i for i, e in enumerate(graph["edges"])
                     if (e["kind"], e["source"], e["target"])
-                    == ("REFERENCES", STAR_CLUSTER, "petri/net"))
+                    == ("CITES", STAR_CLUSTER, "petri/net"))
 
 The names that lift off are those of the star module defined on a line
-the listing is showing.
+the listing is showing. A name is as its author wrote it -- a module's
+title, a heading, a symbol -- so it can be found on that line.
 
     def liftable(graph: dict, laid, rows: dict) -> list:
         return [n["address"] for n in graph["nodes"]
-                if laid.cluster_of[n["address"]] == STAR_CLUSTER and n.get("start_line") in rows]
+                if laid.cluster_of[n["address"]] == STAR_CLUSTER
+                and n.get("start_line") in rows and n.get("name")]
 
 Each name that lifts off takes its own text with it: a copy of the
 very glyphs that spell it in the listing, so the name is seen to leave
 the line it was written on. If a name cannot be found in its line, it
 is set afresh in code type instead.
 
-    def name_glyphs(row, text: str, label: str, cap: float):
-        start = text.find(label)
+    def name_glyphs(row, text: str, name: str, cap: float):
+        start = text.find(name)
         glyphs, index = visible_glyphs(row), glyph_indices(text)
         if start < 0 or len(glyphs) != len(index):
-            return sized_text(label, CODE_FONT, CODE, cap).move_to(row.get_left(), aligned_edge=LEFT)
+            return sized_text(name, CODE_FONT, CODE, cap).move_to(row.get_left(), aligned_edge=LEFT)
         return VGroup(*[glyphs[index[p]].copy()
-                        for p in range(start, start + len(label)) if p in index])
+                        for p in range(start, start + len(name)) if p in index])
+
+    def names_found(graph: dict, lifted: list, source: list) -> bool:
+        nodes = {n["address"]: n for n in graph["nodes"]}
+        return all(nodes[a]["name"] in source[nodes[a]["start_line"] - 1] for a in lifted)
 
 A name in the graph is more than its text: it has an address, the
 module's address and then the name. That is the form the query in the
@@ -474,12 +482,12 @@ asked questions. So as each name flies it becomes its address -- the
 name's own glyphs take their place at the end, and the module's part
 appears in front of them. Addresses are set level, reading away from
 the flower, beside the dots they belong to. A node whose address does not end in its
-label, the module itself, simply turns into its address.
+name, the module itself, simply turns into its address.
 
-    def address_text(address: str, label: str, colour: str, cap: float, point, direction):
+    def address_text(address: str, name: str, colour: str, cap: float, point, direction):
         full = sized_text(address, CODE_FONT, STRUCTURE, cap).next_to(point, direction, buff=0.2)
         glyphs = visible_glyphs(full)
-        count = len(label.replace(" ", "")) if address.endswith(label) else 0
+        count = len(name.replace(" ", "")) if address.endswith(name) else 0
         prefix, tail = VGroup(*glyphs[:len(glyphs) - count]), VGroup(*glyphs[len(glyphs) - count:])
         if count:
             tail.set_color(colour)
@@ -493,7 +501,11 @@ query returned is that node and what it holds.
 
     def query_nodes(graph: dict) -> list:
         parents = tree_parents(graph)
-        return [ANSWER_ADDRESS] + sorted(a for a, p in parents.items() if p == ANSWER_ADDRESS)
+        def held(address):
+            while address != ANSWER_ADDRESS and address in parents:
+                address = parents[address]
+            return address == ANSWER_ADDRESS
+        return [n["address"] for n in graph["nodes"] if held(n["address"])]
 
 What the query touched is not a passing flash. Those nodes turn the
 colour of the query and grow, the edges among them with them, and they
@@ -543,10 +555,11 @@ When the view has pulled back, the graph is named for what it is: the
 output of a command, with its real size.
 
     def graph_summary(graph: dict) -> str:
-        return f"notlob graph  ->  {len(graph['nodes'])} nodes, {len(graph['edges'])} edges"
+        command = f"notlob graph --level {graph['level']}"
+        return f"{command}  ->  {len(graph['nodes'])} nodes, {len(graph['edges'])} edges"
 
 ~example
-    graph_summary({"nodes": [1, 2], "edges": [3]}) == "notlob graph  ->  2 nodes, 1 edges"
+    graph_summary({"level": "index", "nodes": [1, 2], "edges": [3]}) == "notlob graph --level index  ->  2 nodes, 1 edges"
 
 The beat itself follows: the pieces are prepared in their final places,
 then moved back to where each one starts.
@@ -590,7 +603,7 @@ then moved back to where each one starts.
         names = {}
         for a in lifted:
             line = nodes[a]["start_line"]
-            names[a] = name_glyphs(rows[line], source[line - 1], nodes[a]["label"], cap)
+            names[a] = name_glyphs(rows[line], source[line - 1], nodes[a]["name"], cap)
             dots[a].move_to(names[a].get_left() + 0.2 * LEFT)
         settled = [dots[a] for a in sorted(star) if a not in lifted]
 
@@ -599,7 +612,7 @@ then moved back to where each one starts.
             away = homes[a] - centre
             outward = UP if np.linalg.norm(away) < 1e-6 else (RIGHT if away[0] >= 0 else LEFT)
             colour = NODE_COLOURS.get(nodes[a]["kind"], STRUCTURE)
-            prefix, tail = address_text(a, nodes[a]["label"], colour, cap * 1.25, homes[a], outward)
+            prefix, tail = address_text(a, nodes[a]["name"], colour, cap * 1.25, homes[a], outward)
             flights.append(dots[a].animate.move_to(homes[a]))
             if len(tail):
                 flights += [Transform(names[a], tail), FadeIn(prefix)]
@@ -895,8 +908,15 @@ is dropped on the way to the screen.
 The cross-reference the listing shows is a real edge of the graph, and
 the opening listing defines enough of the module's names to lift off.
 
-    STAR_GRAPH["edges"][hero_edge(STAR_GRAPH)]["kind"] == "REFERENCES"
+    STAR_GRAPH["edges"][hero_edge(STAR_GRAPH)]["kind"] == "CITES"
     len(liftable(STAR_GRAPH, STAR_LAYOUT, typeset_listing(STAR_MODULE, *OPENING)[1])) >= 5
+
+##every name lifts off its own line
+
+Each name that lifts off is copied from the glyphs of the line that
+defines it, so it has to be there to copy.
+
+    names_found(STAR_GRAPH, liftable(STAR_GRAPH, STAR_LAYOUT, typeset_listing(STAR_MODULE, *OPENING)[1]), STAR_MODULE.read_text(encoding="utf-8").split("\n"))
 
 ##every note is heard in full
 
@@ -914,6 +934,7 @@ names of its own beneath it -- the part of the graph the query returned.
 
     STAR_LAYOUT.cluster_of[ANSWER_ADDRESS] == STAR_CLUSTER
     len(query_nodes(STAR_GRAPH)) >= 3
+    f"{STAR_CLUSTER}#fire" in query_nodes(STAR_GRAPH)
 
 ##every claim on screen is ticked
 

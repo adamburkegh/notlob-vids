@@ -18,21 +18,29 @@ list of spans, each one line, a column range, and a kind.
 
 ##Classification
 
-Most tokens know their kind from their type alone: a module heading is
-a title, a cross-reference is a ref. Indented lines are the exception --
-the same INDENTED_LINE terminal is code in a code block, a claim body
-under a sigil or in the tests section, and a declaration in the
-references section -- so for those the enclosing grammar rule decides.
+Most tokens know their kind from their type alone: a cross-reference is
+a ref, a paragraph's text is prose. Two sorts are the exception, and
+for them the enclosing grammar rule decides. A named line -- a title, a
+heading, a named property or test, an appendix -- is a rule of its own,
+with its marker, its name and its line end each a token, and every
+token of it takes the rule's kind. And the same INDENTED_LINE terminal
+is code in a code block, a claim body under a sigil or in the tests
+section, and a declaration in the references section.
 
     TOKEN_KINDS = {
-        "MOD_HEAD": "title",
-        "SUBHEAD": "subheading",
         "LINE_START_TEXT": "prose",
         "PROSE_TEXT": "prose",
         "REF": "ref",
         "BULLET": "bullet",
         "SIGIL": "sigil",
-        "TEST_SIGIL": "sigil",
+    }
+
+    HEAD_KINDS = {
+        "module_head": "title",
+        "sub_head": "subheading",
+        "property_head": "sigil",
+        "test_head": "sigil",
+        "appendix_head": "structure",
     }
 
     INDENTED_KINDS = {
@@ -44,6 +52,8 @@ references section -- so for those the enclosing grammar rule decides.
     }
 
     def classify(rule: str, token_type: str) -> str:
+        if rule in HEAD_KINDS:
+            return HEAD_KINDS[rule]
         if token_type == "INDENTED_LINE":
             return INDENTED_KINDS.get(rule, "structure")
         return TOKEN_KINDS.get(token_type, "structure")
@@ -79,7 +89,8 @@ short of it, and a blank line contributes no span at all.
 
 ~example
     spans("#Demo\n\nSee #Other here.\n") == [
-        Span(0, 0, 5, "title"),
+        Span(0, 0, 1, "title"),
+        Span(0, 1, 5, "title"),
         Span(2, 0, 4, "prose"),
         Span(2, 4, 10, "ref"),
         Span(2, 10, 16, "prose"),
@@ -187,7 +198,7 @@ the claim lines are recorded separately, to be marked in the margin.
 Everything either layer can say must have a style.
 
 ~example
-    set(TOKEN_KINDS.values()) | set(INDENTED_KINDS.values()) | {"structure"} <= set(TOKEN_STYLES)
+    set(TOKEN_KINDS.values()) | set(HEAD_KINDS.values()) | set(INDENTED_KINDS.values()) | {"structure"} <= set(TOKEN_STYLES)
     {syntax_kind(t) for t in (SyntaxToken.Comment, SyntaxToken.Keyword, SyntaxToken.Text)} <= set(TOKEN_STYLES)
 
 Documents are generated from the constructs that matter on screen --
